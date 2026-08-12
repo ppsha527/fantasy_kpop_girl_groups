@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KPOP IDOL DRAFT 選秀</title>
+<style>
+:root {
+    --primary: #ff69b4;
+    --primary-dark: #d6499a;
+    --accent: #ba55d3;
+    --danger: #f4436b;
+    --success: #3ecf6b;
+    --panel: #1e1e2e;
+    --panel-2: #181824;
+    --line: #34344a;
+}
+* { box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: linear-gradient(135deg, #0f0f0f, #1a0033);
+    color: white;
+    margin: 0; padding: 20px;
+}
+h1 { text-align: center; color: var(--primary); text-shadow: 0 0 15px var(--primary); }
+h2 { margin-top: 0; }
+
+.setup, .panel { background: var(--panel); padding: 20px; border-radius: 16px; max-width: 900px; margin: 0 auto 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+.panel-narrow { max-width: 560px; }
+.hint { color: #999; font-size: 13px; line-height: 1.6; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+.field { display:flex; flex-direction: column; gap:4px; font-size: 14px; color:#cfcfe0; }
+label.inline { color:#cfcfe0; font-size:14px; display:flex; align-items:center; gap:6px; }
+
+input[type=text], input[type=number], textarea, select {
+    background: #14141f; border: 1px solid var(--line); color: white;
+    border-radius: 8px; padding: 9px 12px; font-size: 14px;
+}
+input[type=text]:focus, input[type=number]:focus, textarea:focus, select:focus { outline: 2px solid var(--primary); }
+textarea { width: 100%; font-family: monospace; }
+
+.container { display: flex; gap: 25px; max-width: 1600px; margin: 0 auto; }
+#idolPool { width: 48%; }
+#draftArea { width: 52%; }
+
+#idolPool, #draftArea {
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.6);
+}
+
+.group-section { margin-bottom: 28px; }
+.group-title { font-size: 22px; margin: 12px 0; color: #ffd700; padding-bottom: 8px; border-bottom: 2px solid #333; display:flex; justify-content: space-between; align-items:center;}
+.idol-btn {
+    margin: 6px 4px; padding: 10px 16px; border-radius: 50px; border: none;
+    background: #2a2a3a; color: white; cursor: pointer; transition: all .15s;
+    font-size: 14px;
+}
+.idol-btn:hover:not(:disabled) { background: var(--primary); transform: scale(1.08); }
+.idol-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ===== 美化按鈕 ===== */
+.btn {
+    border: none; border-radius: 10px; padding: 11px 22px; font-size: 15px; font-weight: 600;
+    cursor: pointer; color: white; letter-spacing: .3px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.35);
+    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+.btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.45); filter: brightness(1.08); }
+.btn:active:not(:disabled) { transform: translateY(0); filter: brightness(.95); }
+.btn:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; transform: none; }
+.btn-primary  { background: linear-gradient(135deg, var(--primary), var(--accent)); }
+.btn-secondary{ background: linear-gradient(135deg, #3a3a55, #2a2a3f); }
+.btn-success  { background: linear-gradient(135deg, #43e97b, #2ea86a); }
+.btn-danger   { background: linear-gradient(135deg, #ff5c7c, #d6335a); }
+.btn-ghost    { background: transparent; border: 1px solid var(--line); box-shadow:none; }
+.btn-ghost:hover:not(:disabled) { background: #2a2a3a; }
+.btn-sm { padding: 6px 12px; font-size: 13px; border-radius: 8px; }
+.btn-lg { padding: 15px 40px; font-size: 18px; border-radius: 14px; }
+.icon-btn { background:#2a2a3a; border:1px solid var(--line); color:#ddd; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:13px; }
+.icon-btn:hover { background:#3a3a50; }
+
+/* 表格 */
+table { width: 100%; border-collapse: collapse; background: var(--panel-2); border-radius: 12px; overflow: hidden; margin-top: 15px; table-layout: fixed; }
+th, td { padding: 14px 8px; text-align: center; border: 1px solid #444; word-break: break-all; font-size: 14px; }
+th { background: #2a2a3a; color: var(--accent); font-size: 15px; }
+tr:nth-child(even) { background: #202030; }
+tr:hover { background: #2a2a40; }
+table.editor td { padding: 6px; }
+table.editor input { width: 100%; padding: 6px 8px; font-size: 13px; }
+
+.pending { background: #ff9800; color: black; font-weight: bold; padding: 12px; border-radius: 10px; margin: 12px 0; }
+.finished-tag { color: var(--success); font-weight: bold; }
+.badge { display:inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; background:#333; color:#ddd; margin-left:6px;}
+.badge-host { background: var(--primary); color:#1a0018; }
+.code-box { font-family: monospace; font-size: 20px; letter-spacing: 3px; background:#111; padding: 10px 16px; border-radius: 10px; display:inline-block; }
+.link-box { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+.link-box input { flex: 1; min-width: 220px; }
+
+.player-chip { background:#25253a; padding:8px 14px; border-radius: 20px; margin: 4px; display:inline-flex; align-items:center; gap:8px; }
+
+/* 轉盤 */
+.wheel-wrap { display:flex; flex-direction: column; align-items:center; gap: 16px; padding: 10px 0 4px; }
+#wheelCanvas { border-radius: 50%; box-shadow: 0 0 30px rgba(255,105,180,.5); background:#111; }
+.wheel-pointer { font-size: 30px; margin-bottom: -14px; }
+.wheel-result { font-size: 22px; font-weight: bold; color: #ffd700; min-height: 32px; }
+
+.modal-backdrop { position: fixed; inset:0; background: rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:50; }
+.modal { background: var(--panel); border-radius: 16px; padding: 24px; max-width: 480px; width: 92%; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+
+#connStatus { text-align:center; font-size:13px; color:#888; margin-bottom: 10px; }
+#connStatus.ok { color: var(--success); }
+#connStatus.err { color: var(--danger); }
+</style>
+</head>
+<body>
+<h1>🎤 KPOP IDOL DRAFT 選秀</h1>
+<div id="connStatus"></div>
+<div id="app"></div>
+
+<!-- Firebase compat SDK：作為免架站的雲端同步後端 -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script>
+// ==========================================================================
+// 這個版本改成「線上房間」架構：
+//   - 不需要你自己架伺服器程式，改用 Firebase Firestore 當作免費的雲端資料庫
+//   - 房主建立房間後會拿到一組邀請連結，朋友點連結、輸入名字即可加入
+//   - 所有玩家看到的畫面會透過 Firestore 即時同步（非逐秒的絕對即時，但幾乎即時）
+//   - 使用前你需要一組「自己的」Firebase 專案設定值（免費即可），第一次會請你貼上
+//     取得方式：前往 https://console.firebase.google.com 建立專案 → 建立 Firestore
+//     資料庫（測試模式）→ 專案設定 → 新增網頁應用程式 → 複製 firebaseConfig 物件
+// ==========================================================================
+
+const LS_CONFIG = "kpopDraft_firebaseConfig";
+const LS_CLIENT = "kpopDraft_clientId";
+const LS_NAME = "kpopDraft_myName";
+
+function uid() {
+    return 'c-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+function getClientId() {
+    let id = localStorage.getItem(LS_CLIENT);
+    if (!id) { id = uid(); localStorage.setItem(LS_CLIENT, id); }
+    return id;
+}
+function genRoomCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let s = "";
+    for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+}
+
+const clientId = getClientId();
+let db = null;
+let roomCode = new URLSearchParams(location.search).get("room");
+let room = null;           // 目前房間資料（本地鏡像，來自 Firestore onSnapshot）
+let unsub = null;
+let wheelAnimating = false;
+
+// ==================== 偶像預設資料 ====================
+const BASE_IDOLS = [
+{ name:"Wonyoung", group:"IVE" }, { name:"Yujin", group:"IVE" }, { name:"Gaeul", group:"IVE" },
+{ name:"Rei", group:"IVE" }, { name:"Liz", group:"IVE" }, { name:"Leeseo", group:"IVE" },
+{ name:"Sakura", group:"LE SSERAFIM" }, { name:"Chaewon", group:"LE SSERAFIM" },
+{ name:"Yunjin", group:"LE SSERAFIM" }, { name:"Kazuha", group:"LE SSERAFIM" }, { name:"Eunchae", group:"LE SSERAFIM" },
+{ name:"Karina", group:"aespa" }, { name:"Giselle", group:"aespa" }, { name:"Winter", group:"aespa" }, { name:"NingNing", group:"aespa" },
+{ name:"Nayeon", group:"TWICE" }, { name:"Jeongyeon", group:"TWICE" }, { name:"Momo", group:"TWICE" },
+{ name:"Sana", group:"TWICE" }, { name:"Jihyo", group:"TWICE" }, { name:"Mina", group:"TWICE" },
+{ name:"Dahyun", group:"TWICE" }, { name:"Chaeyoung", group:"TWICE" }, { name:"Tzuyu", group:"TWICE" },
+{ name:"Yeji", group:"ITZY" }, { name:"Lia", group:"ITZY" }, { name:"Ryujin", group:"ITZY" },
+{ name:"Chaeryeong", group:"ITZY" }, { name:"Yuna", group:"ITZY" },
+{ name:"Lily", group:"NMIXX" }, { name:"Haewon", group:"NMIXX" }, { name:"Sullyoon", group:"NMIXX" },
+{ name:"Jiwoo", group:"NMIXX" }, { name:"Bae", group:"NMIXX" }, { name:"Kyujin", group:"NMIXX" },
+{ name:"Hayoung", group:"fromis_9" }, { name:"Jiwon", group:"fromis_9" }, { name:"Chaeyoung", group:"fromis_9" },
+{ name:"Nagyung", group:"fromis_9" }, { name:"Jiheon", group:"fromis_9" },
+{ name:"Sumin", group:"STAYC" }, { name:"Sieun", group:"STAYC" }, { name:"Isa", group:"STAYC" },
+{ name:"Seeun", group:"STAYC" }, { name:"Yoon", group:"STAYC" }, { name:"J", group:"STAYC" },
+{ name:"Carmen", group:"Hearts2Hearts" }, { name:"Jiwoo", group:"Hearts2Hearts" }, { name:"Yuha", group:"Hearts2Hearts" },
+{ name:"Stella", group:"Hearts2Hearts" }, { name:"Juun", group:"Hearts2Hearts" }, { name:"A-na", group:"Hearts2Hearts" },
+{ name:"Ian", group:"Hearts2Hearts" }, { name:"Ye-on", group:"Hearts2Hearts" },
+{ name:"Woni", group:"RESCENE" }, { name:"Liv", group:"RESCENE" }, { name:"Minami", group:"RESCENE" },
+{ name:"May", group:"RESCENE" }, { name:"Zena", group:"RESCENE" },
+{ name:"Keena", group:"FIFTY FIFTY" }, { name:"ChanelleMoon", group:"FIFTY FIFTY" }, { name:"Yewon", group:"FIFTY FIFTY" },
+{ name:"Hana", group:"FIFTY FIFTY" }, { name:"Athena", group:"FIFTY FIFTY" },
+{ name:"Leesol", group:"KiiiKiii" }, { name:"Sui", group:"KiiiKiii" }, { name:"Jiyu", group:"KiiiKiii" },
+{ name:"Haum", group:"KiiiKiii" }, { name:"Kya", group:"KiiiKiii" },
+{ name:"Yunah", group:"ILLIT" }, { name:"Minju", group:"ILLIT" }, { name:"Moka", group:"ILLIT" },
+{ name:"Wonhee", group:"ILLIT" }, { name:"Iroha", group:"ILLIT" },
+{ name:"Miyeon", group:"i-dle" }, { name:"Minnie", group:"i-dle" }, { name:"Seoyeon", group:"i-dle" },
+{ name:"Yuqi", group:"i-dle" }, { name:"Shuhwa", group:"i-dle" },
+{ name:"SeoYeon", group:"tripleS" }, { name:"HyeRin", group:"tripleS" }, { name:"JiWoo", group:"tripleS" },
+{ name:"ChaeYeon", group:"tripleS" }, { name:"YooYeon", group:"tripleS" }, { name:"SooMin", group:"tripleS" },
+{ name:"NaKyoung", group:"tripleS" }, { name:"YuBin", group:"tripleS" }, { name:"Kaede", group:"tripleS" },
+{ name:"DaHyun", group:"tripleS" }, { name:"Kotone", group:"tripleS" }, { name:"YeonJi", group:"tripleS" },
+{ name:"Nien", group:"tripleS" }, { name:"SoHyun", group:"tripleS" }, { name:"Xinyu", group:"tripleS" },
+{ name:"Mayu", group:"tripleS" }, { name:"Lynn", group:"tripleS" }, { name:"JooBin", group:"tripleS" },
+{ name:"HaYeon", group:"tripleS" }, { name:"ShiOn", group:"tripleS" }, { name:"ChaeWon", group:"tripleS" },
+{ name:"Sullin", group:"tripleS" }, { name:"SeoAh", group:"tripleS" }, { name:"JiYeon", group:"tripleS" },
+{ name:"MAI", group:"izna" }, { name:"BANG JEE MIN", group:"izna" }, { name:"KOKO", group:"izna" },
+{ name:"RYU SA RANG", group:"izna" }, { name:"CHOI JUNG EUN", group:"izna" }, { name:"JEONG SAE BI", group:"izna" },
+{ name:"Chodan", group:"QWER" }, { name:"Magenta", group:"QWER" }, { name:"Hina", group:"QWER" }, { name:"Siyeon", group:"QWER" },
+{ name:"Sooin", group:"MEOVV" }, { name:"Gawon", group:"MEOVV" }, { name:"Anna", group:"MEOVV" },
+{ name:"Narin", group:"MEOVV" }, { name:"Ella", group:"MEOVV" },
+{ name:"Choi Yu Jin", group:"Kep1er" }, { name:"Shen Xiao Ting", group:"Kep1er" }, { name:"Kim Chae Hyun", group:"Kep1er" },
+{ name:"Kim Da Yeon", group:"Kep1er" }, { name:"Ezaki Hikaru", group:"Kep1er" }, { name:"Huening Bahiyyih", group:"Kep1er" },
+{ name:"MASHIRO", group:"MADEIN" }, { name:"MiU", group:"MADEIN" }, { name:"SERINA", group:"MADEIN" }, { name:"NAGOMI", group:"MADEIN" },
+{ name:"Seoi", group:"H1-KEY" }, { name:"Riina", group:"H1-KEY" }, { name:"Hwiseo", group:"H1-KEY" }, { name:"Yel", group:"H1-KEY" },
+{ name:"HITOMI", group:"SAY MY NAME" }, { name:"SHUIE", group:"SAY MY NAME" }, { name:"MEI", group:"SAY MY NAME" },
+{ name:"KANNY", group:"SAY MY NAME" }, { name:"SOHA", group:"SAY MY NAME" }, { name:"DOHEE", group:"SAY MY NAME" },
+{ name:"JUNHWI", group:"SAY MY NAME" }, { name:"SEUNGJOO", group:"SAY MY NAME" },
+{ name:"Ruka", group:"BABYMONSTER" }, { name:"Pharita", group:"BABYMONSTER" }, { name:"Asa", group:"BABYMONSTER" },
+{ name:"Ahyeon", group:"BABYMONSTER" }, { name:"Rami", group:"BABYMONSTER" }, { name:"Rora", group:"BABYMONSTER" }, { name:"Chiquita", group:"BABYMONSTER" },
+{ name:"Choi Yena", group:"SOLO" }, { name:"Kwon Eunbi", group:"SOLO" }, { name:"Lee ChaeYeon", group:"SOLO" }, { name:"Jo YuRi", group:"SOLO" },
+{ name:"Kim Chung Ha", group:"SOLO" }, { name:"Kim Se Jeong", group:"SOLO" },
+{ name:"Hyojung", group:"OH MY GIRL" }, { name:"Mimi", group:"OH MY GIRL" }, { name:"YooA", group:"OH MY GIRL" },
+{ name:"Seunghee", group:"OH MY GIRL" }, { name:"Yubin", group:"OH MY GIRL" }, { name:"Arin", group:"OH MY GIRL" },
+{ name:"SeolA", group:"WJSN" }, { name:"BoNa", group:"WJSN" }, { name:"Exy", group:"WJSN" },
+{ name:"SooBin", group:"WJSN" }, { name:"Luda", group:"WJSN" }, { name:"DaWon", group:"WJSN" },
+{ name:"EunSeo", group:"WJSN" }, { name:"YeoReum", group:"WJSN" }, { name:"DaYoung", group:"WJSN" }, { name:"YeonJung", group:"WJSN" },
+{ name:"JiU", group:"Dreamcatcher" }, { name:"SuA", group:"Dreamcatcher" }, { name:"SiYeon", group:"Dreamcatcher" },
+{ name:"HanDong", group:"Dreamcatcher" }, { name:"YooHyeon", group:"Dreamcatcher" }, { name:"DaMi", group:"Dreamcatcher" }, { name:"GaHyun", group:"Dreamcatcher" }
+].map(i => ({ name: i.name, group: i.group, birthYear: "", debutYear: "" }));
+
+// ==================== Firebase 連線設定 ====================
+function loadFirebaseConfig() {
+    try { return JSON.parse(localStorage.getItem(LS_CONFIG) || "null"); }
+    catch { return null; }
+}
+function initFirebase(config) {
+    if (!firebase.apps.length) firebase.initializeApp(config);
+    db = firebase.firestore();
+}
+function tryStartFirebase() {
+    const cfg = loadFirebaseConfig();
+    if (!cfg) { render(); return; }
+    try {
+        initFirebase(cfg);
+        setConnStatus("ok", "✅ 已連接雲端資料庫");
+        if (roomCode) listenRoom(roomCode); else render();
+    } catch (e) {
+        setConnStatus("err", "⚠️ Firebase 設定有誤：" + e.message);
+        render();
+    }
+}
+function setConnStatus(cls, text) {
+    const el = document.getElementById("connStatus");
+    el.className = cls; el.textContent = text;
+}
+
+// ==================== Firestore 房間操作 ====================
+function roomRef(code) { return db.collection("kpopDraftRooms").doc(code); }
+
+function listenRoom(code) {
+    if (unsub) unsub();
+    setConnStatus("", "⏳ 連接房間中…");
+    unsub = roomRef(code).onSnapshot(snap => {
+        if (!snap.exists) { setConnStatus("err", "⚠️ 找不到房間，房號可能錯誤或已過期"); room = null; render(); return; }
+        room = snap.data();
+        setConnStatus("ok", `✅ 已連線房間 ${code}`);
+        render();
+    }, err => {
+        setConnStatus("err", "⚠️ 連線錯誤：" + err.message);
+    });
+}
+
+async function createRoom(hostName) {
+    const code = genRoomCode();
+    const data = {
+        hostId: clientId,
+        createdAt: Date.now(),
+        status: "lobby",
+        settings: { draftMode: "normal", minRounds: 2, wheelEnabled: false, wheelExcludedGroups: [], wheelExcludedNames: "" },
+        players: [{ id: clientId, name: hostName, team: [] }],
+        idolPool: BASE_IDOLS,
+        draftBoard: [],
+        finishedPlayerIds: [],
+        pendingPick: null
+    };
+    await roomRef(code).set(data);
+    localStorage.setItem(LS_NAME, hostName);
+    roomCode = code;
+    const url = new URL(location.href); url.searchParams.set("room", code);
+    history.replaceState(null, "", url.toString());
+    listenRoom(code);
+}
+
+async function joinRoom(name) {
+    localStorage.setItem(LS_NAME, name);
+    await db.runTransaction(async t => {
+        const ref = roomRef(roomCode);
+        const snap = await t.get(ref);
+        if (!snap.exists) throw new Error("房間不存在");
+        const r = snap.data();
+        if (r.players.some(p => p.id === clientId)) return; // 已在房內（重新整理）
+        if (r.status !== "lobby") throw new Error("遊戲已開始，無法加入");
+        const players = r.players.concat([{ id: clientId, name, team: [] }]);
+        t.update(ref, { players });
+    });
+}
+
+async function updateSettings(patch) {
+    await roomRef(roomCode).update({ settings: { ...room.settings, ...patch } });
+}
+
+async function saveIdolPool(pool) {
+    await roomRef(roomCode).update({ idolPool: pool });
+}
+
+async function shufflePlayers() {
+    const arr = room.players.slice();
+    for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+    await roomRef(roomCode).update({ players: arr });
+}
+
+async function removePlayer(id) {
+    await roomRef(roomCode).update({ players: room.players.filter(p => p.id !== id) });
+}
+
+// ---- 純邏輯（回合順序 / 蛇形選秀），已於本地測試驗證 ----
+function computeActiveOrder(players, finishedIds, roundNumber, draftMode) {
+    let active = players.map(p => p.id).filter(id => !finishedIds.includes(id));
+    if (draftMode === "snake" && roundNumber % 2 === 1) active.reverse();
+    return active;
+}
+function ensureCurrentRound(draftBoard, players, finishedIds, draftMode) {
+    let last = draftBoard[draftBoard.length - 1];
+    if (last && Object.keys(last.picks).length < last.order.length) return { draftBoard, done: false };
+    let roundNumber = draftBoard.length;
+    let order = computeActiveOrder(players, finishedIds, roundNumber, draftMode);
+    if (order.length === 0) return { draftBoard, done: true };
+    return { draftBoard: draftBoard.concat([{ order, picks: {} }]), done: false };
+}
+function getCurrentPlayerId(draftBoard) {
+    let last = draftBoard[draftBoard.length - 1];
+    if (!last) return null;
+    let pos = Object.keys(last.picks).length;
+    return last.order[pos] ?? null;
+}
+function applyPickToBoard(draftBoard, playerId, value) {
+    let copy = draftBoard.map(r => ({ order: r.order, picks: { ...r.picks } }));
+    copy[copy.length - 1].picks[playerId] = value;
+    return copy;
+}
+
+async function startGame() {
+    let { draftBoard, done } = ensureCurrentRound([], room.players, [], room.settings.draftMode);
+    if (done) { alert("沒有玩家可以開始遊戲"); return; }
+    await roomRef(roomCode).update({ status: "playing", draftBoard, finishedPlayerIds: [] });
+}
+
+async function pickIdol(idol) {
+    if (getCurrentPlayerId(room.draftBoard) !== clientId) return;
+    if (room.pendingPick) return;
+    await roomRef(roomCode).update({ pendingPick: { idol } });
+}
+
+async function confirmPick() {
+    await db.runTransaction(async t => {
+        const ref = roomRef(roomCode);
+        const snap = await t.get(ref);
+        const r = snap.data();
+        if (getCurrentPlayerId(r.draftBoard) !== clientId || !r.pendingPick) return;
+        const idol = r.pendingPick.idol;
+        let players = r.players.map(p => p.id === clientId ? { ...p, team: p.team.concat([idol]) } : p);
+        let idolPool = r.idolPool.filter(i => !(i.name === idol.name && i.group === idol.group));
+        let draftBoard = applyPickToBoard(r.draftBoard, clientId, `${idol.name} (${idol.group})`);
+        let ensured = ensureCurrentRound(draftBoard, players, r.finishedPlayerIds, r.settings.draftMode);
+        let status = ensured.done ? "finished" : "playing";
+        t.update(ref, { players, idolPool, draftBoard: ensured.draftBoard, pendingPick: null, status });
+    });
+}
+
+async function cancelPick() {
+    if (getCurrentPlayerId(room.draftBoard) !== clientId) return;
+    await roomRef(roomCode).update({ pendingPick: null });
+}
+
+async function finishTurn() {
+    await db.runTransaction(async t => {
+        const ref = roomRef(roomCode);
+        const snap = await t.get(ref);
+        const r = snap.data();
+        if (getCurrentPlayerId(r.draftBoard) !== clientId) return;
+        const me = r.players.find(p => p.id === clientId);
+        if (me.team.length < r.settings.minRounds) return;
+        let finishedPlayerIds = r.finishedPlayerIds.concat([clientId]);
+        let draftBoard = applyPickToBoard(r.draftBoard, clientId, "FINISHED");
+        let ensured = ensureCurrentRound(draftBoard, r.players, finishedPlayerIds, r.settings.draftMode);
+        let status = ensured.done ? "finished" : "playing";
+        t.update(ref, { finishedPlayerIds, draftBoard: ensured.draftBoard, status });
+    });
+}
+
+// ==================== 轉盤 ====================
+function eligibleForWheel() {
+    const ex = room.settings.wheelExcludedGroups || [];
+    const names = (room.settings.wheelExcludedNames || "").split(",").map(s => s.trim()).filter(Boolean);
+    return room.idolPool.filter(i => !ex.includes(i.group) && !names.includes(i.name));
+}
+
+function spinWheel() {
+    if (wheelAnimating) return;
+    const pool = eligibleForWheel();
+    if (pool.length === 0) { alert("轉盤中沒有可選擇的偶像（可能都被房主排除了）"); return; }
+    wheelAnimating = true;
+    const resultEl = document.getElementById("wheelResult");
+    let ticks = 0; const maxTicks = 22 + Math.floor(Math.random() * 10);
+    const timer = setInterval(() => {
+        ticks++;
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        if (resultEl) resultEl.textContent = `${pick.name} (${pick.group})`;
+        if (ticks >= maxTicks) {
+            clearInterval(timer);
+            wheelAnimating = false;
+            const finalPick = pool[Math.floor(Math.random() * pool.length)];
+            if (resultEl) resultEl.textContent = `🎉 ${finalPick.name} (${finalPick.group})`;
+            pickIdol(finalPick);
+        }
+    }, 90);
+}
+
+// ==================== 畫面渲染 ====================
+function render() {
+    const app = document.getElementById("app");
+    if (!db) { app.innerHTML = renderFirebaseSetup(); bindFirebaseSetup(); return; }
+    if (!roomCode) { app.innerHTML = renderHome(); bindHome(); return; }
+    if (!room) { app.innerHTML = `<div class="panel panel-narrow">連線中…若長時間無反應，請確認房號或 Firebase 設定是否正確。</div>`; return; }
+
+    const isHost = room.hostId === clientId;
+    const me = room.players.find(p => p.id === clientId);
+    if (!me) { app.innerHTML = renderJoin(); bindJoin(); return; }
+
+    if (room.status === "lobby") { app.innerHTML = renderLobby(isHost); bindLobby(isHost); return; }
+    app.innerHTML = renderGame(isHost);
+    bindGame(isHost);
+}
+
+function renderFirebaseSetup() {
+    return `
+    <div class="panel panel-narrow">
+        <h2>🔌 第一次使用：連接雲端資料庫</h2>
+        <p class="hint">
+        這個功能讓朋友可以透過連結加入同一個房間一起遊玩，不需要你自己架站。<br><br>
+        步驟：前往 <b>https://console.firebase.google.com</b> → 建立一個免費專案 →
+        左側選單「Build → Firestore Database」→ 建立資料庫（測試模式即可）→
+        回到「專案總覽」旁的齒輪「專案設定」→ 拉到最下方「你的應用程式」→ 新增網頁應用程式 →
+        複製出現的 <code>firebaseConfig</code> 物件，貼在下面即可。<br><br>
+        這組設定只會存在你自己的瀏覽器（localStorage），房間內的其他玩家也要各自貼上「同一組」設定才能加入同一個房間。
+        </p>
+        <textarea id="fbConfigInput" rows="8" placeholder='貼上像這樣的內容：
+{
+  apiKey: "AIza...",
+  authDomain: "xxx.firebaseapp.com",
+  projectId: "xxx",
+  storageBucket: "xxx.appspot.com",
+  messagingSenderId: "...",
+  appId: "..."
+}'></textarea>
+        <div class="row">
+            <button class="btn btn-primary" id="fbSaveBtn">儲存並連線</button>
+        </div>
+    </div>`;
+}
+function bindFirebaseSetup() {
+    document.getElementById("fbSaveBtn").onclick = () => {
+        const raw = document.getElementById("fbConfigInput").value.trim();
+        if (!raw) return;
+        try {
+            const cfg = new Function("return (" + raw + ")")();
+            localStorage.setItem(LS_CONFIG, JSON.stringify(cfg));
+            tryStartFirebase();
+        } catch (e) { alert("設定格式看起來不太對，請確認是否完整複製了 firebaseConfig 物件。\n" + e.message); }
+    };
+}
+
+function renderHome() {
+    return `
+    <div class="panel panel-narrow">
+        <h2>🏠 建立新房間</h2>
+        <div class="field">
+            <label>你的名字</label>
+            <input type="text" id="hostName" placeholder="房主暱稱" value="${localStorage.getItem(LS_NAME) || ""}">
+        </div>
+        <div class="row"><button class="btn btn-primary btn-lg" id="createBtn">建立房間並取得邀請連結</button></div>
+        <hr style="border-color:var(--line); margin:22px 0;">
+        <h2>🔑 已有房號？</h2>
+        <div class="row">
+            <input type="text" id="joinCodeInput" placeholder="輸入 6 位房號" style="text-transform:uppercase; width:160px;">
+            <button class="btn btn-secondary" id="joinCodeBtn">加入房間</button>
+        </div>
+        <div class="row"><button class="icon-btn" id="fbResetBtn">🔄 重新設定雲端連線</button></div>
+    </div>`;
+}
+function bindHome() {
+    document.getElementById("createBtn").onclick = async () => {
+        const name = document.getElementById("hostName").value.trim() || "房主";
+        await createRoom(name);
+    };
+    document.getElementById("joinCodeBtn").onclick = () => {
+        const code = document.getElementById("joinCodeInput").value.trim().toUpperCase();
+        if (!code) return;
+        roomCode = code;
+        const url = new URL(location.href); url.searchParams.set("room", code);
+        history.replaceState(null, "", url.toString());
+        listenRoom(code);
+    };
+    document.getElementById("fbResetBtn").onclick = () => {
+        if (confirm("要清除目前的雲端連線設定嗎？")) { localStorage.removeItem(LS_CONFIG); db = null; render(); }
+    };
+}
+
+function renderJoin() {
+    return `
+    <div class="panel panel-narrow">
+        <h2>🎫 加入房間 <span class="code-box">${roomCode}</span></h2>
+        <div class="field">
+            <label>你的名字</label>
+            <input type="text" id="joinName" placeholder="輸入你的暱稱" value="${localStorage.getItem(LS_NAME) || ""}">
+        </div>
+        <div class="row"><button class="btn btn-primary btn-lg" id="joinBtn">加入遊戲</button></div>
+    </div>`;
+}
+function bindJoin() {
+    document.getElementById("joinBtn").onclick = async () => {
+        const name = document.getElementById("joinName").value.trim();
+        if (!name) { alert("請輸入名字"); return; }
+        try { await joinRoom(name); } catch (e) { alert(e.message); }
+    };
+}
+
+function inviteUrl() {
+    const url = new URL(location.href); url.searchParams.set("room", roomCode);
+    return url.toString();
+}
+
+function renderLobby(isHost) {
+    let html = `<div class="panel">
+        <h2>🛋️ 房間大廳 <span class="code-box">${roomCode}</span></h2>
+        <div class="link-box">
+            <input type="text" readonly value="${inviteUrl()}" id="inviteLink">
+            <button class="btn btn-secondary btn-sm" id="copyLinkBtn">📋 複製邀請連結</button>
+        </div>
+        <h3>玩家（${room.players.length}）</h3>
+        <div>${room.players.map(p => `<span class="player-chip">${p.name}${p.id === room.hostId ? '<span class="badge badge-host">房主</span>' : ''}${isHost && p.id !== room.hostId ? ` <button class="icon-btn" data-remove="${p.id}">移除</button>` : ''}</span>`).join("")}</div>
+    </div>`;
+
+    if (isHost) {
+        html += `
+        <div class="panel">
+            <h2>⚙️ 房主設定</h2>
+            <div class="row">
+                <div class="field"><label>選秀模式</label>
+                    <select id="draftModeSel">
+                        <option value="normal" ${room.settings.draftMode === "normal" ? "selected" : ""}>正常輪流</option>
+                        <option value="snake" ${room.settings.draftMode === "snake" ? "selected" : ""}>蛇形選秀</option>
+                    </select>
+                </div>
+                <div class="field"><label>每人至少選幾人才能結束</label>
+                    <input type="number" id="minRoundsInput" min="1" max="20" value="${room.settings.minRounds}" style="width:90px">
+                </div>
+                <div class="field"><label>&nbsp;</label><button class="btn btn-ghost btn-sm" id="shuffleBtn">🔀 隨機排序玩家</button></div>
+            </div>
+            <label class="inline"><input type="checkbox" id="wheelEnabledChk" ${room.settings.wheelEnabled ? "checked" : ""}> 這場遊戲啟用「轉盤抽選」（啟用後玩家改用轉盤決定人選，不能直接手動點選）</label>
+
+            <div id="wheelSettingsBox" style="margin-top:14px; ${room.settings.wheelEnabled ? "" : "display:none"}">
+                <h3>轉盤排除設定</h3>
+                <p class="hint">被勾選的團體 / 逗號分隔的個人名字，將不會出現在轉盤選項中。</p>
+                <div class="row" id="groupExcludeBox">${allGroups().map(g => `<label class="inline"><input type="checkbox" class="grpEx" value="${g}" ${room.settings.wheelExcludedGroups.includes(g) ? "checked" : ""}> ${g}</label>`).join("")}</div>
+                <div class="field" style="margin-top:8px;">
+                    <label>額外排除特定成員（用逗號分隔）</label>
+                    <input type="text" id="excludeNamesInput" value="${room.settings.wheelExcludedNames || ""}" placeholder="例如：Wonyoung, Karina">
+                </div>
+                <div class="row"><button class="btn btn-secondary btn-sm" id="saveWheelSettingsBtn">儲存轉盤設定</button></div>
+            </div>
+
+            <h3 style="margin-top:22px;">📚 偶像資料庫（名字 / 團體 / 出生年 / 出道年）</h3>
+            <p class="hint">出生年、出道年由你自行填寫或用下方批次匯入。留空不影響遊戲，只是額外資訊欄位。</p>
+            ${renderIdolEditorTable()}
+            <div class="row" style="margin-top:10px;">
+                <input type="text" id="newIdolName" placeholder="姓名" style="width:130px">
+                <input type="text" id="newIdolGroup" placeholder="團體" style="width:130px">
+                <input type="text" id="newIdolBirth" placeholder="出生年" style="width:90px">
+                <input type="text" id="newIdolDebut" placeholder="出道年" style="width:90px">
+                <button class="btn btn-secondary btn-sm" id="addIdolBtn">➕ 新增偶像</button>
+            </div>
+            <details style="margin-top:14px;">
+                <summary style="cursor:pointer; color:#ccc;">批次匯入（CSV：姓名,團體,出生年,出道年，一行一筆）</summary>
+                <textarea id="csvImport" rows="5" placeholder="Wonyoung,IVE,2004,2021"></textarea>
+                <div class="row"><button class="btn btn-secondary btn-sm" id="csvImportBtn">匯入 / 更新</button></div>
+            </details>
+
+            <div class="row" style="margin-top:20px;">
+                <button class="btn btn-primary btn-lg" id="startGameBtn">🚀 開始選秀</button>
+            </div>
+        </div>`;
+    } else {
+        html += `<div class="panel"><p class="hint">等待房主設定並開始遊戲…</p></div>`;
+    }
+    return html;
+}
+
+function allGroups() {
+    const set = new Set(room.idolPool.map(i => i.group));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function renderIdolEditorTable() {
+    let rows = room.idolPool.map((i, idx) => `
+        <tr>
+            <td>${i.name}</td>
+            <td>${i.group}</td>
+            <td><input type="text" data-idx="${idx}" data-field="birthYear" value="${i.birthYear || ""}"></td>
+            <td><input type="text" data-idx="${idx}" data-field="debutYear" value="${i.debutYear || ""}"></td>
+            <td><button class="icon-btn" data-delidol="${idx}">刪除</button></td>
+        </tr>`).join("");
+    return `<div style="max-height:340px; overflow:auto;">
+        <table class="editor"><tr><th>名字</th><th>團體</th><th>出生年</th><th>出道年</th><th></th></tr>${rows}</table>
+    </div>
+    <div class="row" style="margin-top:8px;"><button class="btn btn-secondary btn-sm" id="saveIdolTableBtn">💾 儲存資料庫變更</button></div>`;
+}
+
+function bindLobby(isHost) {
+    document.getElementById("copyLinkBtn").onclick = () => {
+        navigator.clipboard?.writeText(inviteUrl()).then(() => alert("已複製邀請連結！")).catch(() => prompt("複製這個連結：", inviteUrl()));
+    };
+    document.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => removePlayer(b.dataset.remove));
+    if (!isHost) return;
+
+    document.getElementById("shuffleBtn").onclick = shufflePlayers;
+    document.getElementById("draftModeSel").onchange = e => updateSettings({ draftMode: e.target.value });
+    document.getElementById("minRoundsInput").onchange = e => updateSettings({ minRounds: Math.max(1, parseInt(e.target.value) || 1) });
+    document.getElementById("wheelEnabledChk").onchange = e => updateSettings({ wheelEnabled: e.target.checked });
+    document.getElementById("saveWheelSettingsBtn")?.addEventListener("click", () => {
+        const groups = Array.from(document.querySelectorAll(".grpEx:checked")).map(c => c.value);
+        const names = document.getElementById("excludeNamesInput").value;
+        updateSettings({ wheelExcludedGroups: groups, wheelExcludedNames: names });
+    });
+
+    document.getElementById("saveIdolTableBtn").onclick = () => {
+        const pool = room.idolPool.map(i => ({ ...i }));
+        document.querySelectorAll("table.editor input[data-idx]").forEach(inp => {
+            pool[parseInt(inp.dataset.idx)][inp.dataset.field] = inp.value;
+        });
+        saveIdolPool(pool);
+    };
+    document.querySelectorAll("[data-delidol]").forEach(b => b.onclick = () => {
+        const idx = parseInt(b.dataset.delidol);
+        const pool = room.idolPool.filter((_, i) => i !== idx);
+        saveIdolPool(pool);
+    });
+    document.getElementById("addIdolBtn").onclick = () => {
+        const name = document.getElementById("newIdolName").value.trim();
+        const group = document.getElementById("newIdolGroup").value.trim();
+        if (!name || !group) { alert("請輸入姓名與團體"); return; }
+        const birthYear = document.getElementById("newIdolBirth").value.trim();
+        const debutYear = document.getElementById("newIdolDebut").value.trim();
+        saveIdolPool(room.idolPool.concat([{ name, group, birthYear, debutYear }]));
+    };
+    document.getElementById("csvImportBtn").onclick = () => {
+        const text = document.getElementById("csvImport").value.trim();
+        if (!text) return;
+        let pool = room.idolPool.map(i => ({ ...i }));
+        text.split("\n").map(l => l.trim()).filter(Boolean).forEach(line => {
+            const [name, group, birthYear = "", debutYear = ""] = line.split(",").map(s => s.trim());
+            if (!name || !group) return;
+            const existing = pool.find(i => i.name === name && i.group === group);
+            if (existing) { existing.birthYear = birthYear; existing.debutYear = debutYear; }
+            else pool.push({ name, group, birthYear, debutYear });
+        });
+        saveIdolPool(pool);
+    };
+    document.getElementById("startGameBtn").onclick = startGame;
+}
+
+function renderGame(isHost) {
+    return `
+    <h2 id="turnInfo" style="text-align:center; font-size:24px; min-height:40px;">${renderTurnInfo()}</h2>
+    ${room.status === "finished" ? `<div class="row" style="justify-content:center;"><button class="btn btn-primary btn-lg" id="aiBtn">🤖 AI 分析最終結果</button></div>` : ""}
+    <div class="container">
+        <div id="idolPool">${renderIdolPoolHtml()}</div>
+        <div id="draftArea">${renderDraftAreaHtml()}</div>
+    </div>`;
+}
+
+function renderTurnInfo() {
+    if (room.status === "finished") return "🎉 所有玩家已結束指名！";
+    const curId = getCurrentPlayerId(room.draftBoard);
+    const cur = room.players.find(p => p.id === curId);
+    return `第 ${room.draftBoard.length} 輪 - 目前輪到：<b>${cur ? cur.name : "—"}</b>${curId === clientId ? " (你)" : ""}`;
+}
+
+function renderIdolPoolHtml() {
+    let html = "<h2>🎤 偶像選秀池</h2>";
+    const wheelMode = room.settings.wheelEnabled;
+    const myTurn = getCurrentPlayerId(room.draftBoard) === clientId && room.status === "playing" && !room.pendingPick;
+    if (wheelMode) {
+        const excludedCount = room.idolPool.length - eligibleForWheel().length;
+        html += `<div class="wheel-wrap">
+            <div class="wheel-pointer">🔻</div>
+            <div id="wheelResult" class="wheel-result">準備轉動…</div>
+            <button class="btn btn-primary btn-lg" id="spinBtn" ${myTurn ? "" : "disabled"}>🎡 轉動轉盤</button>
+            <div class="hint">目前排除 ${excludedCount} 位偶像不會被抽到</div>
+        </div>`;
+    }
+    let groups = {};
+    room.idolPool.forEach(i => { (groups[i.group] ||= []).push(i); });
+    Object.keys(groups).sort((a, b) => a.localeCompare(b)).forEach(g => {
+        html += `<div class="group-section"><div class="group-title">${g} (${groups[g].length}人)</div>`;
+        groups[g].forEach(idol => {
+            const disabled = wheelMode || !myTurn;
+            html += `<button class="idol-btn" data-pick="${idol.name}|${idol.group}" ${disabled ? "disabled" : ""}>${idol.name}</button>`;
+        });
+        html += `</div>`;
+    });
+    return html;
+}
+
+function renderDraftAreaHtml() {
+    let html = "<h2>👥 選秀進行中</h2>";
+    const curId = getCurrentPlayerId(room.draftBoard);
+    const cur = room.players.find(p => p.id === curId);
+    const myTurn = curId === clientId;
+    html += `<div style="background:#25253a; padding:18px; border-radius:12px; margin-bottom:15px;">`;
+    html += `<h3>目前選擇：${cur ? cur.name : "—"}（第 ${room.draftBoard.length} 輪）</h3>`;
+    if (room.pendingPick && myTurn) {
+        html += `<div class="pending">已選擇：${room.pendingPick.idol.name} (${room.pendingPick.idol.group})<br><br>
+        <button class="btn btn-success btn-sm" id="confirmPickBtn">✅ 確定放入表格</button>
+        <button class="btn btn-danger btn-sm" id="cancelPickBtn">❌ 取消</button></div>`;
+    } else if (room.pendingPick) {
+        html += `<div class="pending">對方選擇中：${room.pendingPick.idol.name} (${room.pendingPick.idol.group})</div>`;
+    } else if (room.status === "playing") {
+        html += `<div style="color:#aaa;">${myTurn ? (room.settings.wheelEnabled ? "點擊左側「轉動轉盤」進行選擇" : "點擊左側偶像進行選擇") : "等待對方選擇中…"}</div>`;
+    }
+    html += `</div>`;
+    if (room.status === "playing" && myTurn) {
+        const me = room.players.find(p => p.id === clientId);
+        const canFinish = me.team.length >= room.settings.minRounds;
+        html += `<button class="btn btn-secondary" id="finishTurnBtn" ${canFinish ? "" : "disabled"}>
+        ${canFinish ? "✅ 結束我的指名" : `還需選 ${room.settings.minRounds - me.team.length} 人`}</button>`;
+    }
+    html += renderDraftBoardHtml();
+    return html;
+}
+
+function renderDraftBoardHtml() {
+    let html = `<h3>📋 Draft Board（輪次 × 玩家）</h3><table><tr><th>輪次</th>`;
+    room.players.forEach(p => html += `<th>${p.name}</th>`);
+    html += `</tr>`;
+    room.draftBoard.forEach((round, roundIdx) => {
+        html += `<tr><td><b>${roundIdx + 1}</b></td>`;
+        room.players.forEach(p => {
+            const val = round.picks[p.id];
+            if (val === "FINISHED") html += `<td class="finished-tag">已結束指名</td>`;
+            else if (val) html += `<td>${val}</td>`;
+            else if (round.order.includes(p.id)) html += `<td>-</td>`;
+            else html += `<td></td>`;
+        });
+        html += `</tr>`;
+    });
+    html += `</table>`;
+    return html;
+}
+
+function bindGame(isHost) {
+    document.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
+        const [name, group] = b.dataset.pick.split("|");
+        const idol = room.idolPool.find(i => i.name === name && i.group === group);
+        if (idol) pickIdol(idol);
+    });
+    document.getElementById("spinBtn")?.addEventListener("click", spinWheel);
+    document.getElementById("confirmPickBtn")?.addEventListener("click", confirmPick);
+    document.getElementById("cancelPickBtn")?.addEventListener("click", cancelPick);
+    document.getElementById("finishTurnBtn")?.addEventListener("click", finishTurn);
+    document.getElementById("aiBtn")?.addEventListener("click", aiAnalysis);
+}
+
+// ==================== AI 分析 ====================
+async function aiAnalysis() {
+    const draftData = room.players.map(p => ({ player: p.name, team: p.team.map(i => `${i.name} (${i.group})`) }));
+    const area = document.getElementById("draftArea");
+    area.innerHTML = "<h2>分析中…</h2>";
+    try {
+        const res = await fetch("/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: draftData }) });
+        if (!res.ok) throw new Error("no backend");
+        const data = await res.json();
+        area.innerHTML = `<h2>🤖 AI 分析結果</h2><div style="white-space:pre-wrap; line-height:1.7;">${data.result || JSON.stringify(data)}</div>`;
+    } catch (e) {
+        area.innerHTML = `<h2>🤖 分析結果</h2>
+        <p class="hint">⚠️ 沒有偵測到 <code>/analyze</code> 後端 API，這裡改用本地簡易統計代替（不是真正的 AI 分析）。若要接上真正的 AI，可以自行架設一個 <code>/analyze</code> 端點呼叫你的模型 API。</p>
+        <div style="white-space:pre-wrap; line-height:1.7;">${draftData.map(d => `👤 ${d.player}\n  選了 ${d.team.length} 人：${d.team.join("、") || "（無）"}`).join("\n\n")}</div>
+        <div class="row" style="margin-top:16px;"><button class="btn btn-secondary btn-sm" id="backBtn">⬅ 返回</button></div>`;
+        document.getElementById("backBtn")?.addEventListener("click", render);
+    }
+}
+
+// ==================== 啟動 ====================
+tryStartFirebase();
+</script>
+</body>
+</html>
