@@ -252,11 +252,24 @@ function setConnStatus(cls, text) {
 // ==================== Firestore 房間操作 ====================
 function roomRef(code) { return db.collection("kpopDraftRooms").doc(code); }
 
+let everConnectedRoom = false;
+let roomClosedByHost = false;
+
 function listenRoom(code) {
     if (unsub) unsub();
+    everConnectedRoom = false; roomClosedByHost = false;
     setConnStatus("", "⏳ 連接房間中…");
     unsub = roomRef(code).onSnapshot(snap => {
-        if (!snap.exists) { setConnStatus("err", "⚠️ 找不到房間，房號可能錯誤或已過期"); room = null; render(); return; }
+        if (!snap.exists) {
+            if (everConnectedRoom) {
+                roomClosedByHost = true;
+                setConnStatus("err", "⚠️ 房主已退出，房間已關閉");
+            } else {
+                setConnStatus("err", "⚠️ 找不到房間，房號可能錯誤或已過期");
+            }
+            room = null; render(); return;
+        }
+        everConnectedRoom = true;
         room = snap.data();
         setConnStatus("ok", `✅ 已連線房間 ${code}`);
         render();
@@ -426,7 +439,19 @@ function render() {
     const app = document.getElementById("app");
     if (!db) { app.innerHTML = renderFirebaseSetup(); bindFirebaseSetup(); return; }
     if (!roomCode) { app.innerHTML = renderHome(); bindHome(); return; }
-    if (!room) { app.innerHTML = `<div class="panel panel-narrow">連線中…若長時間無反應，請確認房號或 Firebase 設定是否正確。</div>`; return; }
+    if (!room) {
+        if (roomClosedByHost) {
+            app.innerHTML = `<div class="panel panel-narrow">
+                <h2>🚪 房間已關閉</h2>
+                <p class="hint">房主已退出，這場遊戲已經結束。</p>
+                <div class="row"><button class="btn btn-primary" id="backHomeBtn">回首頁</button></div>
+            </div>`;
+            document.getElementById("backHomeBtn").onclick = goHome;
+        } else {
+            app.innerHTML = `<div class="panel panel-narrow">連線中…若長時間無反應，請確認房號或 Firebase 設定是否正確。</div>`;
+        }
+        return;
+    }
 
     const isHost = room.hostId === clientId;
     const me = room.players.find(p => p.id === clientId);
@@ -463,15 +488,57 @@ function renderFirebaseSetup() {
         </div>
     </div>`;
 }
+function extractConfigObject(raw) {
+    // 允許使用者貼上「整段 const firebaseConfig = {...};」或「只貼花括號內容」
+    // 做法：只取第一個 { 到最後一個 } 之間的內容，去掉前後多餘的宣告語法
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start === -1 || end === -1 || end < start) {
+        throw new Error("找不到 { } 物件內容，請確認有複製到完整的 firebaseConfig。");
+    }
+    const objText = raw.slice(start, end + 1);
+    return new Function("return (" + objText + ")")();
+}
+
 function bindFirebaseSetup() {
-    document.getElementById("fbSaveBtn").onclick = () => {
+    document.getElementById("fbSaveBtn").onclick = async () => {
         const raw = document.getElementById("fbConfigInput").value.trim();
         if (!raw) return;
+        const btn = document.getElementById("fbSaveBtn");
+        let cfg;
         try {
-            const cfg = new Function("return (" + raw + ")")();
+            cfg = extractConfigObject(raw);
+        } catch (e) {
+            alert("設定格式看起來不太對，請確認是否完整複製了 firebaseConfig 物件。\n" + e.message);
+            return;
+        }
+        if (!cfg.apiKey || !cfg.projectId) {
+            alert("缺少 apiKey 或 projectId，請確認複製了完整的設定內容。");
+            return;
+        }
+        btn.disabled = true; btn.textContent = "連線測試中…";
+        try {
+            initFirebase(cfg);
+            // 實際嘗試連線一次，確認 Firestore 有啟用、規則允許讀取
+            await db.collection("kpopDraftRooms").limit(1).get();
             localStorage.setItem(LS_CONFIG, JSON.stringify(cfg));
-            tryStartFirebase();
-        } catch (e) { alert("設定格式看起來不太對，請確認是否完整複製了 firebaseConfig 物件。\n" + e.message); }
+            setConnStatus("ok", "✅ 已連接雲端資料庫");
+            if (roomCode) listenRoom(roomCode); else render();
+        } catch (e) {
+            btn.disabled = false; btn.textContent = "儲存並連線";
+            let reason = e.message || String(e);
+            let hint = "";
+            if (e.code === "permission-denied" || /Missing or insufficient permissions/i.test(reason)) {
+                hint = "→ 資料庫的「安全性規則」目前不允許讀寫，請到 Firestore →「規則」分頁，確認是用測試模式（test mode）建立，或規則允許 read/write。";
+            } else if (/not.*found|NOT_FOUND/i.test(reason)) {
+                hint = "→ 這個專案似乎還沒有建立 Firestore 資料庫，請到 Firebase Console → Firestore → 建立資料庫。";
+            } else if (/api key|API key/i.test(reason)) {
+                hint = "→ apiKey 看起來不正確，請重新複製一次 firebaseConfig。";
+            } else {
+                hint = "→ 請確認：1) 已建立 Firestore 資料庫 2) 網路正常 3) 專案設定值正確。";
+            }
+            alert("連線失敗：" + reason + "\n" + hint);
+        }
     };
 }
 
@@ -676,8 +743,10 @@ function bindLobby(isHost) {
 
 function renderGame(isHost) {
     return `
+    <div class="row" style="justify-content:center;">
+        <button class="btn btn-danger btn-sm" id="leaveBtn">🚪 ${isHost ? "退出（結束整場遊戲）" : "退出遊戲"}</button>
+    </div>
     <h2 id="turnInfo" style="text-align:center; font-size:24px; min-height:40px;">${renderTurnInfo()}</h2>
-    ${room.status === "finished" ? `<div class="row" style="justify-content:center;"><button class="btn btn-primary btn-lg" id="aiBtn">🤖 AI 分析最終結果</button></div>` : ""}
     <div class="container">
         <div id="idolPool">${renderIdolPoolHtml()}</div>
         <div id="draftArea">${renderDraftAreaHtml()}</div>
@@ -729,7 +798,7 @@ function renderDraftAreaHtml() {
         <button class="btn btn-success btn-sm" id="confirmPickBtn">✅ 確定放入表格</button>
         <button class="btn btn-danger btn-sm" id="cancelPickBtn">❌ 取消</button></div>`;
     } else if (room.pendingPick) {
-        html += `<div class="pending">對方選擇中：${room.pendingPick.idol.name} (${room.pendingPick.idol.group})</div>`;
+        html += `<div class="pending">⏳ ${cur ? cur.name : "對方"} 選擇中…</div>`;
     } else if (room.status === "playing") {
         html += `<div style="color:#aaa;">${myTurn ? (room.settings.wheelEnabled ? "點擊左側「轉動轉盤」進行選擇" : "點擊左側偶像進行選擇") : "等待對方選擇中…"}</div>`;
     }
@@ -773,26 +842,60 @@ function bindGame(isHost) {
     document.getElementById("confirmPickBtn")?.addEventListener("click", confirmPick);
     document.getElementById("cancelPickBtn")?.addEventListener("click", cancelPick);
     document.getElementById("finishTurnBtn")?.addEventListener("click", finishTurn);
-    document.getElementById("aiBtn")?.addEventListener("click", aiAnalysis);
+    document.getElementById("leaveBtn")?.addEventListener("click", leaveRoom);
 }
 
-// ==================== AI 分析 ====================
-async function aiAnalysis() {
-    const draftData = room.players.map(p => ({ player: p.name, team: p.team.map(i => `${i.name} (${i.group})`) }));
-    const area = document.getElementById("draftArea");
-    area.innerHTML = "<h2>分析中…</h2>";
-    try {
-        const res = await fetch("/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: draftData }) });
-        if (!res.ok) throw new Error("no backend");
-        const data = await res.json();
-        area.innerHTML = `<h2>🤖 AI 分析結果</h2><div style="white-space:pre-wrap; line-height:1.7;">${data.result || JSON.stringify(data)}</div>`;
-    } catch (e) {
-        area.innerHTML = `<h2>🤖 分析結果</h2>
-        <p class="hint">⚠️ 沒有偵測到 <code>/analyze</code> 後端 API，這裡改用本地簡易統計代替（不是真正的 AI 分析）。若要接上真正的 AI，可以自行架設一個 <code>/analyze</code> 端點呼叫你的模型 API。</p>
-        <div style="white-space:pre-wrap; line-height:1.7;">${draftData.map(d => `👤 ${d.player}\n  選了 ${d.team.length} 人：${d.team.join("、") || "（無）"}`).join("\n\n")}</div>
-        <div class="row" style="margin-top:16px;"><button class="btn btn-secondary btn-sm" id="backBtn">⬅ 返回</button></div>`;
-        document.getElementById("backBtn")?.addEventListener("click", render);
+// ==================== 退出房間 ====================
+function goHome() {
+    if (unsub) { unsub(); unsub = null; }
+    room = null; roomCode = null;
+    const url = new URL(location.href); url.searchParams.delete("room");
+    history.replaceState(null, "", url.toString());
+    render();
+}
+
+async function leaveRoom() {
+    const amHost = room.hostId === clientId;
+    const msg = amHost
+        ? "你是房主，退出後這個房間會直接關閉，所有玩家都會被移出遊戲。確定要退出嗎？"
+        : "確定要退出這場遊戲嗎？退出後你會離開房間，其他玩家不受影響會繼續遊戲。";
+    if (!confirm(msg)) return;
+
+    if (amHost) {
+        await roomRef(roomCode).delete();
+        goHome();
+        return;
     }
+
+    await db.runTransaction(async t => {
+        const ref = roomRef(roomCode);
+        const snap = await t.get(ref);
+        if (!snap.exists) return;
+        const r = snap.data();
+        const curIdBefore = getCurrentPlayerId(r.draftBoard);
+
+        const players = r.players.filter(p => p.id !== clientId);
+        const finishedPlayerIds = r.finishedPlayerIds.filter(id => id !== clientId);
+
+        let draftBoard = r.draftBoard.map(rnd => {
+            const order = rnd.order.filter(id => id !== clientId);
+            const picks = { ...rnd.picks };
+            delete picks[clientId];
+            return { order, picks };
+        }).filter(rnd => rnd.order.length > 0);
+
+        let status = r.status;
+        if (r.status === "playing") {
+            const ensured = ensureCurrentRound(draftBoard, players, finishedPlayerIds, r.settings.draftMode);
+            draftBoard = ensured.draftBoard;
+            status = ensured.done ? "finished" : "playing";
+        }
+
+        const pendingPick = curIdBefore === clientId ? null : r.pendingPick;
+
+        t.update(ref, { players, finishedPlayerIds, draftBoard, status, pendingPick });
+    });
+    goHome();
 }
 
 // ==================== 啟動 ====================
