@@ -112,6 +112,10 @@ table.editor input { width: 100%; padding: 6px 8px; font-size: 13px; }
 .rules-banner ul { margin: 0; padding-left: 20px; line-height: 1.8; }
 .rules-banner .none { color:#999; }
 
+/* 讓「輪到誰選擇」的文字更醒目 */
+.turn-highlight { color: var(--primary); font-weight: 800; text-shadow: 0 0 10px rgba(255,105,180,.6); animation: turnPulse 1.4s ease-in-out infinite; }
+@keyframes turnPulse { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
+
 .modal-backdrop { position: fixed; inset:0; background: rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:50; }
 .modal { background: var(--panel); border-radius: 16px; padding: 24px; max-width: 480px; width: 92%; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
 
@@ -541,6 +545,22 @@ function idolGroups(idol) {
     return String(idol.group || "").split("/").map(s => s.trim()).filter(Boolean);
 }
 
+// 年份輸入驗證：只接受 1900~今年+1 之間的合理西元年份，避免 500、1300 這種明顯錯誤的值進入資料庫
+// 取得資料庫目前該欄位（出生年或出道年）實際存在的最早～最近年份，作為驗證新輸入值的上下限
+// 年份輸入驗證：只攔截明顯不合理的數字（例如 500、1300 這種打錯字），範圍是寬鬆的 1900~今年+1。
+// 不會限制新輸入的年份要落在「資料庫目前既有」的範圍內，這樣才能讓資料庫自然成長——
+// 之後新增比現有資料更早或更晚的偶像，會直接被接受，不需要手動調整任何東西；
+// 選秀限制1、2的年份範圍本來就是在開始選秀當下即時重新抓資料庫最新狀態，會自動跟著長大。
+function sanitizeYearInput(value) {
+    const v = String(value || "").trim();
+    if (v === "") return "";
+    if (!/^\d{1,4}$/.test(v)) return "";
+    const n = parseInt(v, 10);
+    const maxY = new Date().getFullYear() + 1;
+    if (n < 1900 || n > maxY) return "";
+    return String(n);
+}
+
 function getCurrentPlayerId(draftBoard) {
     let last = draftBoard[draftBoard.length - 1];
     if (!last) return null;
@@ -569,19 +589,21 @@ function sampleRandom(arr, k) {
 }
 
 function resolveRules(settings, idolPool) {
-    const birthYears = idolPool.map(i => parseInt(i.birthYear)).filter(y => !isNaN(y));
-    const debutYears = idolPool.map(i => parseInt(i.debutYear)).filter(y => !isNaN(y));
+    const maxReasonableYear = new Date().getFullYear() + 1;
+    const isReasonableYear = y => !isNaN(y) && y >= 1900 && y <= maxReasonableYear;
+    const birthYears = idolPool.map(i => parseInt(i.birthYear)).filter(isReasonableYear);
+    const debutYears = idolPool.map(i => parseInt(i.debutYear)).filter(isReasonableYear);
     const groups = Array.from(new Set(idolPool.flatMap(i => idolGroups(i))));
 
     let bannedBirthYears = [];
     if (birthYears.length) {
-        const minY = Math.min(...birthYears), maxY = Math.max(...birthYears);
-        const allYears = []; for (let y = minY; y <= maxY; y++) allYears.push(y);
+        // 只從資料庫實際出現過的出生年裡抽，避免抽到沒人出生的空白年份
+        const distinctYears = Array.from(new Set(birthYears)).sort((a, b) => a - b);
         if (settings.birthRuleType === "scatter") {
-            const count = Math.min(allYears.length, 3 + Math.floor(Math.random() * 3)); // 3~5
-            bannedBirthYears = sampleRandom(allYears, count);
+            const count = Math.min(distinctYears.length, 3 + Math.floor(Math.random() * 3)); // 3~5
+            bannedBirthYears = sampleRandom(distinctYears, count);
         } else if (settings.birthRuleType === "rangeAround") {
-            const base = minY + Math.floor(Math.random() * (maxY - minY + 1));
+            const base = distinctYears[Math.floor(Math.random() * distinctYears.length)];
             const lowOffset = 1 + Math.floor(Math.random() * 2);  // 1~2
             const highOffset = 1 + Math.floor(Math.random() * 2); // 1~2
             for (let y = base - lowOffset; y <= base + highOffset; y++) bannedBirthYears.push(y);
@@ -590,13 +612,13 @@ function resolveRules(settings, idolPool) {
 
     let bannedDebutYears = [];
     if (debutYears.length) {
-        const minY = Math.min(...debutYears), maxY = Math.max(...debutYears);
-        const allYears = []; for (let y = minY; y <= maxY; y++) allYears.push(y);
+        // 只從資料庫實際出現過的出道年裡抽，避免抽到沒人出道的空白年份
+        const distinctYears = Array.from(new Set(debutYears)).sort((a, b) => a - b);
         if (settings.debutRuleType === "scatter") {
-            const count = Math.min(allYears.length, 3); // 隨機3年
-            bannedDebutYears = sampleRandom(allYears, count);
+            const count = Math.min(distinctYears.length, 3); // 隨機3年
+            bannedDebutYears = sampleRandom(distinctYears, count);
         } else if (settings.debutRuleType === "rangeAround") {
-            const base = minY + Math.floor(Math.random() * (maxY - minY + 1));
+            const base = distinctYears[Math.floor(Math.random() * distinctYears.length)];
             for (let y = base - 1; y <= base + 1; y++) bannedDebutYears.push(y); // 固定 ±1
         }
     }
@@ -967,7 +989,10 @@ function renderLobbyRulesPreview() {
 }
 
 function renderLobby(isHost) {
-    let html = `<div class="panel">
+    let html = `<div class="row" style="justify-content:center;">
+        <button class="btn btn-danger btn-sm" id="leaveBtn">🚪 退回首頁${isHost ? "（結束整場房間）" : ""}</button>
+    </div>
+    <div class="panel">
         <h2>🛋️ 房間大廳 <span class="code-box">${roomCode}</span></h2>
         <div class="link-box">
             <input type="text" readonly value="${inviteUrl()}" id="inviteLink">
@@ -1096,6 +1121,7 @@ function renderIdolEditorTable() {
 }
 
 function bindLobby(isHost) {
+    document.getElementById("leaveBtn")?.addEventListener("click", leaveRoom);
     document.getElementById("copyLinkBtn").onclick = () => {
         navigator.clipboard?.writeText(inviteUrl()).then(() => alert("已複製邀請連結！")).catch(() => prompt("複製這個連結：", inviteUrl()));
     };
@@ -1124,9 +1150,18 @@ function bindLobby(isHost) {
 
     document.getElementById("saveIdolTableBtn").onclick = () => {
         const pool = room.idolPool.map(i => ({ ...i }));
+        let invalidCount = 0;
         document.querySelectorAll("table.editor input[data-idx]").forEach(inp => {
-            pool[parseInt(inp.dataset.idx)][inp.dataset.field] = inp.value;
+            const field = inp.dataset.field;
+            let value = inp.value;
+            if (field === "birthYear" || field === "debutYear") {
+                const clean = sanitizeYearInput(value);
+                if (value.trim() !== "" && clean === "") invalidCount++;
+                value = clean;
+            }
+            pool[parseInt(inp.dataset.idx)][field] = value;
         });
+        if (invalidCount > 0) alert(`偵測到 ${invalidCount} 筆年份格式不正確（例如非數字或明顯不合理，如500、1300），已自動清空，請重新確認填寫正確的西元年份。`);
         saveIdolPool(pool);
     };
     document.querySelectorAll("[data-delidol]").forEach(b => b.onclick = () => {
@@ -1138,8 +1173,13 @@ function bindLobby(isHost) {
         const name = document.getElementById("newIdolName").value.trim();
         const group = document.getElementById("newIdolGroup").value.trim();
         if (!name || !group) { alert("請輸入姓名與團體"); return; }
-        const birthYear = document.getElementById("newIdolBirth").value.trim();
-        const debutYear = document.getElementById("newIdolDebut").value.trim();
+        const birthRaw = document.getElementById("newIdolBirth").value;
+        const debutRaw = document.getElementById("newIdolDebut").value;
+        const birthYear = sanitizeYearInput(birthRaw);
+        const debutYear = sanitizeYearInput(debutRaw);
+        if ((birthRaw.trim() !== "" && birthYear === "") || (debutRaw.trim() !== "" && debutYear === "")) {
+            alert("出生年或出道年格式不正確（例如非數字或明顯不合理，如500、1300），已自動清空該欄位。");
+        }
         const nationality = document.getElementById("newIdolNationality").value.trim();
         saveIdolPool(room.idolPool.concat([{ name, group, birthYear, debutYear, nationality }]));
     };
@@ -1147,13 +1187,18 @@ function bindLobby(isHost) {
         const text = document.getElementById("csvImport").value.trim();
         if (!text) return;
         let pool = room.idolPool.map(i => ({ ...i }));
+        let invalidCount = 0;
         text.split("\n").map(l => l.trim()).filter(Boolean).forEach(line => {
-            const [name, group, birthYear = "", debutYear = "", nationality = ""] = line.split(",").map(s => s.trim());
+            const [name, group, birthRaw = "", debutRaw = "", nationality = ""] = line.split(",").map(s => s.trim());
             if (!name || !group) return;
+            const birthYear = sanitizeYearInput(birthRaw);
+            const debutYear = sanitizeYearInput(debutRaw);
+            if ((birthRaw !== "" && birthYear === "") || (debutRaw !== "" && debutYear === "")) invalidCount++;
             const existing = pool.find(i => i.name === name && i.group === group);
             if (existing) { existing.birthYear = birthYear; existing.debutYear = debutYear; existing.nationality = nationality; }
             else pool.push({ name, group, birthYear, debutYear, nationality });
         });
+        if (invalidCount > 0) alert(`偵測到 ${invalidCount} 筆年份格式不正確（例如非數字或明顯不合理，如500、1300），已自動清空。`);
         saveIdolPool(pool);
     };
     document.getElementById("startGameBtn").onclick = startGame;
@@ -1215,7 +1260,7 @@ function renderTurnInfo() {
     const curId = getCurrentPlayerId(room.draftBoard);
     const cur = room.players.find(p => p.id === curId);
     if (!pos || !cur) return "—";
-    return `${pos.round}-${pos.position}輪 <b>${cur.name}</b>選擇中...${curId === clientId ? "（你）" : ""}`;
+    return `${pos.round}-${pos.position}輪 <span class="turn-highlight" style="font-size:1.2em;">${cur.name} 選擇中...</span>${curId === clientId ? "（你）" : ""}`;
 }
 
 function idolTooltip(idol) {
@@ -1270,13 +1315,13 @@ function renderDraftAreaHtml() {
         html += `<h3>🎉 ${rv.playerName} 選擇了 ${rv.idolName} (${rv.idolGroup})！</h3>`;
         html += `<div style="color:#aaa;">即將進行下一位…</div>`;
     } else {
-        html += `<h3>目前選擇：${cur ? cur.name : "—"}${pos ? `（${pos.round}-${pos.position}輪）` : ""}</h3>`;
+        html += `<h3>目前選擇：<span class="turn-highlight">${cur ? cur.name : "—"}</span>${pos ? `（${pos.round}-${pos.position}輪）` : ""}</h3>`;
         if (localPendingPick && myTurn) {
             html += `<div class="pending">已選擇：${localPendingPick.name} (${localPendingPick.group})<br><br>
             <button class="btn btn-success btn-sm" id="confirmPickBtn">✅ 確定放入表格</button>
             <button class="btn btn-danger btn-sm" id="cancelPickBtn">❌ 取消</button></div>`;
         } else if (room.status === "playing") {
-            html += `<div style="color:#aaa;">${myTurn ? "點擊左側偶像進行選擇" : (pos && cur ? `${pos.round}-${pos.position}輪 ${cur.name}選擇中...` : "等待中…")}</div>`;
+            html += `<div style="font-size:1.05em;">${myTurn ? "點擊左側偶像進行選擇" : (pos && cur ? `${pos.round}-${pos.position}輪 <span class="turn-highlight">${cur.name} 選擇中...</span>` : "等待中…")}</div>`;
         }
     }
     html += `</div>`;
@@ -1358,6 +1403,35 @@ function goHome() {
 
 async function leaveRoom() {
     const amHost = room.hostId === clientId;
+
+    if (amHost && room.status !== "lobby") {
+        // 選秀中（進行中或已結束）房主退出：不關閉房間，改為所有人退回準備房間重新設定
+        const msg = "你是房主，退出選秀後，房間不會關閉，所有玩家會被送回準備房間重新設定並可以重新開始。確定要退出嗎？";
+        if (!confirm(msg)) return;
+        await db.runTransaction(async t => {
+            const ref = roomRef(roomCode);
+            const snap = await t.get(ref);
+            if (!snap.exists) return;
+            const r = snap.data();
+            const remainingPlayers = r.players.filter(p => p.id !== clientId).map(p => ({ ...p, team: [] }));
+            if (remainingPlayers.length === 0) {
+                t.delete(ref);
+                return;
+            }
+            t.update(ref, {
+                hostId: remainingPlayers[0].id,
+                players: remainingPlayers,
+                status: "lobby",
+                draftBoard: [],
+                finishedPlayerIds: [],
+                resolvedRules: null,
+                lastReveal: null
+            });
+        });
+        goHome();
+        return;
+    }
+
     const msg = amHost
         ? "你是房主，退出後這個房間會直接關閉，所有玩家都會被移出遊戲。確定要退出嗎？"
         : "確定要退出這場遊戲嗎？退出後你會離開房間，其他玩家不受影響會繼續遊戲。";
