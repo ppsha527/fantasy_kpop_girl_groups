@@ -385,7 +385,6 @@ const BASE_IDOLS = [
 { name:"Lee ChaeYeon", group:"SOLO", nationality:"韓國", birthYear:"2000", debutYear:"2022" }, 
 { name:"Jo YuRi", group:"SOLO", nationality:"韓國", birthYear:"2001", debutYear:"2021" },
 { name:"GYUBI", group:"SOLO", nationality:"韓國", birthYear:"2006", debutYear:"2024" },
-
 ].map(i => ({ name: i.name, group: i.group, birthYear: i.birthYear || "", debutYear: i.debutYear || "", nationality: i.nationality }));
 
 // ==================== Firebase 固定設定（房主已內建，所有玩家共用同一個雲端資料庫） ====================
@@ -650,7 +649,7 @@ function pickIdol(idol) {
     if (isIdolTaken(idol)) return;
     if (isRestrictedByRules(idol)) return;
     if (isBlockedForPlayer(idol, clientId)) return;
-    if (isGroupCapReached(idol)) return;
+    if (isGroupCapReached(idol, clientId)) return;
     localPendingPick = idol;
     render();
 }
@@ -669,7 +668,8 @@ async function confirmPick() {
         if (r.players.some(p => p.team.some(x => x.name === idol.name && x.group === idol.group))) return;
         if (r.settings.groupCapRuleType && r.settings.groupCapRuleType !== "none") {
             const cap = parseInt(r.settings.groupCapRuleType);
-            const counts = groupPickCounts(r.players);
+            const me0 = r.players.find(p => p.id === clientId);
+            const counts = groupPickCounts(me0 ? me0.team : []);
             const myGroups = idolGroups(idol);
             if (myGroups.some(g => (counts[g] || 0) >= cap)) return;
         }
@@ -738,19 +738,21 @@ function isIdolTaken(idol) {
     return room.players.some(p => p.team.some(t => t.name === idol.name && t.group === idol.group));
 }
 
-// 限制5：每個團體「全場」（不分玩家，所有人加總）最多可選 1 或 2 位；雙團體成員被選走時，所屬的每個團體都各自算一次
-function groupPickCounts(players) {
+// 限制5：每位玩家「各自」對每個團體最多可選 1 或 2 位（不是全場加總）；雙團體成員被選走時，所屬的每個團體都各自算一次
+function groupPickCounts(team) {
     const counts = {};
-    players.forEach(p => p.team.forEach(picked => {
+    (team || []).forEach(picked => {
         idolGroups(picked).forEach(g => { counts[g] = (counts[g] || 0) + 1; });
-    }));
+    });
     return counts;
 }
-function isGroupCapReached(idol) {
+function isGroupCapReached(idol, playerId) {
     const s = room.settings;
     if (!s.groupCapRuleType || s.groupCapRuleType === "none") return false;
     const cap = parseInt(s.groupCapRuleType);
-    const counts = groupPickCounts(room.players);
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) return false;
+    const counts = groupPickCounts(player.team);
     const myGroups = idolGroups(idol);
     return myGroups.some(g => (counts[g] || 0) >= cap);
 }
@@ -772,7 +774,7 @@ function nonKoreanRequirementSatisfied(player, r) {
     const takenKeys = new Set();
     r.players.forEach(p => p.team.forEach(t => takenKeys.add(t.name + "|" + t.group)));
     const rr = r.resolvedRules || { bannedBirthYears: [], bannedDebutYears: [], bannedGroups: [] };
-    const groupCounts = groupPickCounts(r.players);
+    const myGroupCounts = groupPickCounts(player.team);
     const cap = r.settings.groupCapRuleType && r.settings.groupCapRuleType !== "none" ? parseInt(r.settings.groupCapRuleType) : null;
     const remainingNonKorean = r.idolPool.some(i => {
         if (isPureKorean(i)) return false;
@@ -781,7 +783,7 @@ function nonKoreanRequirementSatisfied(player, r) {
         const dy = parseInt(i.debutYear); if (!isNaN(dy) && rr.bannedDebutYears.includes(dy)) return false;
         const myGroups = idolGroups(i);
         if (myGroups.some(g => rr.bannedGroups.includes(g))) return false;
-        if (cap !== null && myGroups.some(g => (groupCounts[g] || 0) >= cap)) return false;
+        if (cap !== null && myGroups.some(g => (myGroupCounts[g] || 0) >= cap)) return false;
         return true;
     });
     return !remainingNonKorean; // 池裡已無非純韓籍可選 → 視為滿足（豁免）
@@ -965,19 +967,19 @@ function renderLobbyRulesPreview() {
     const s = room.settings;
     const items = [];
 
-    if (s.birthRuleType === "scatter") items.push("限制1・出生年份：隨機 3～5 年（不連續）不能選");
-    else if (s.birthRuleType === "rangeAround") items.push("限制1・出生年份：隨機一個年份及其正負1～2年不能選");
+    if (s.birthRuleType === "scatter") items.push("限制1：出生年隨機3~5年不能選");
+    else if (s.birthRuleType === "rangeAround") items.push("限制1：出生年隨機一年±1~2年不能選");
 
-    if (s.debutRuleType === "scatter") items.push("限制2・出道年份：隨機 3 年（不連續）不能選");
-    else if (s.debutRuleType === "rangeAround") items.push("限制2・出道年份：隨機一個年份及其正負1年不能選");
+    if (s.debutRuleType === "scatter") items.push("限制2：出道年隨機3年不能選");
+    else if (s.debutRuleType === "rangeAround") items.push("限制2：出道年隨機一年±1年不能選");
 
-    if (s.nonKoreanRuleType === "atLeastOne") items.push("限制3・國籍：每人至少要選 1 位非純韓籍成員才能結束指名");
-    else if (s.nonKoreanRuleType === "onlyOne") items.push("限制3・國籍：每人最多只能選 1 位非純韓籍成員，選過後其餘鎖住");
+    if (s.nonKoreanRuleType === "atLeastOne") items.push("限制3：每人至少選1位非純韓籍才能結束");
+    else if (s.nonKoreanRuleType === "onlyOne") items.push("限制3：每人最多選1位非純韓籍");
 
-    if (s.groupRuleEnabled) items.push("限制4・團體：隨機 3～10 個團體的成員不能選（含 SOLO）");
+    if (s.groupRuleEnabled) items.push("限制4：隨機3~10個團體不能選（含SOLO）");
 
-    if (s.groupCapRuleType === "1") items.push("限制5・每團上限：全場（不分玩家）每個團體最多只能被選 1 位");
-    else if (s.groupCapRuleType === "2") items.push("限制5・每團上限：全場（不分玩家）每個團體最多只能被選 2 位");
+    if (s.groupCapRuleType === "1") items.push("限制5：每人每個團體最多選1位");
+    else if (s.groupCapRuleType === "2") items.push("限制5：每人每個團體最多選2位");
 
     return `<div class="panel">
         <div class="rules-banner" style="margin:0;">
@@ -990,7 +992,7 @@ function renderLobbyRulesPreview() {
 
 function renderLobby(isHost) {
     let html = `<div class="row" style="justify-content:center;">
-        <button class="btn btn-danger btn-sm" id="leaveBtn">🚪 退回首頁${isHost ? "（結束整場房間）" : ""}</button>
+        <button class="btn btn-danger btn-sm" id="leaveBtn">🚪 退回首頁</button>
     </div>
     <div class="panel">
         <h2>🛋️ 房間大廳 <span class="code-box">${roomCode}</span></h2>
@@ -1028,57 +1030,59 @@ function renderLobby(isHost) {
             </div>
             <div id="wheelSettingsBox" style="margin-top:18px;">
                 <h3>選秀限制規則</h3>
-                <p class="hint">以下 4 項限制皆可獨立開關；全部設為「不限制」＝這場沒有任何限制。具體隨機到哪些年份／團體，會在按下「開始選秀」的當下才決定，並公告給所有玩家。</p>
+                <p class="hint">5項限制皆可獨立開關；具體結果在開始選秀時才決定並公告給所有人。</p>
 
-                <div class="field" style="margin-top:10px;">
-                    <label><b>限制 1：出生年份</b></label>
-                    <select id="birthRuleType">
-                        <option value="none" ${room.settings.birthRuleType === "none" ? "selected" : ""}>不限制</option>
-                        <option value="scatter" ${room.settings.birthRuleType === "scatter" ? "selected" : ""}>隨機 3～5 年（不一定連續）不能選</option>
-                        <option value="rangeAround" ${room.settings.birthRuleType === "rangeAround" ? "selected" : ""}>隨機一個年份及其正負1～2年不能選</option>
+                <div style="margin-top:10px;">
+                    <label class="inline"><input type="checkbox" id="birthEnabledChk" ${room.settings.birthRuleType !== "none" ? "checked" : ""}> <b>限制 1：出生年</b></label>
+                </div>
+                <div class="row" id="birthModeBox" style="margin-top:6px; ${room.settings.birthRuleType !== "none" ? "" : "display:none"}">
+                    <select id="birthRuleTypeSel">
+                        <option value="scatter" ${room.settings.birthRuleType === "scatter" ? "selected" : ""}>隨機3~5年不能選（不連續）</option>
+                        <option value="rangeAround" ${room.settings.birthRuleType === "rangeAround" ? "selected" : ""}>隨機一年±1~2年不能選</option>
                     </select>
                 </div>
-
-                <div class="field" style="margin-top:14px;">
-                    <label><b>限制 2：出道年份</b></label>
-                    <select id="debutRuleType">
-                        <option value="none" ${room.settings.debutRuleType === "none" ? "selected" : ""}>不限制</option>
-                        <option value="scatter" ${room.settings.debutRuleType === "scatter" ? "selected" : ""}>隨機 3 年（不一定連續）不能選</option>
-                        <option value="rangeAround" ${room.settings.debutRuleType === "rangeAround" ? "selected" : ""}>隨機一個年份及其正負1年不能選</option>
-                    </select>
-                </div>
-                <p class="hint" style="margin-top:4px;">限制1、2 的年份範圍會以偶像資料庫中已填寫的出生年／出道年之最早～最晚年份為準。</p>
 
                 <div style="margin-top:14px;">
-                    <label class="inline"><input type="checkbox" id="nonKoreanEnabledChk" ${room.settings.nonKoreanRuleType !== "none" ? "checked" : ""}> <b>限制 3：國籍</b>（啟用後從下面二選一）</label>
+                    <label class="inline"><input type="checkbox" id="debutEnabledChk" ${room.settings.debutRuleType !== "none" ? "checked" : ""}> <b>限制 2：出道年</b></label>
+                </div>
+                <div class="row" id="debutModeBox" style="margin-top:6px; ${room.settings.debutRuleType !== "none" ? "" : "display:none"}">
+                    <select id="debutRuleTypeSel">
+                        <option value="scatter" ${room.settings.debutRuleType === "scatter" ? "selected" : ""}>隨機3年不能選（不連續）</option>
+                        <option value="rangeAround" ${room.settings.debutRuleType === "rangeAround" ? "selected" : ""}>隨機一年±1年不能選</option>
+                    </select>
+                </div>
+                <p class="hint" style="margin-top:4px;">年份範圍自動取自資料庫既有的出生年/出道年。</p>
+
+                <div style="margin-top:14px;">
+                    <label class="inline"><input type="checkbox" id="nonKoreanEnabledChk" ${room.settings.nonKoreanRuleType !== "none" ? "checked" : ""}> <b>限制 3：國籍</b></label>
                 </div>
                 <div class="row" id="nonKoreanModeBox" style="margin-top:6px; ${room.settings.nonKoreanRuleType !== "none" ? "" : "display:none"}">
                     <select id="nonKoreanRuleTypeSel">
-                        <option value="atLeastOne" ${room.settings.nonKoreanRuleType === "atLeastOne" ? "selected" : ""}>至少要選 1 位非純韓籍成員才能結束指名</option>
-                        <option value="onlyOne" ${room.settings.nonKoreanRuleType === "onlyOne" ? "selected" : ""}>只能選 1 位非純韓籍成員（選過後其餘非純韓籍鎖住不能再選）</option>
+                        <option value="atLeastOne" ${room.settings.nonKoreanRuleType === "atLeastOne" ? "selected" : ""}>每人至少選1位非純韓籍才能結束</option>
+                        <option value="onlyOne" ${room.settings.nonKoreanRuleType === "onlyOne" ? "selected" : ""}>每人最多選1位非純韓籍</option>
                     </select>
                 </div>
 
                 <div style="margin-top:14px;">
-                    <label class="inline"><input type="checkbox" id="groupRuleEnabledChk" ${room.settings.groupRuleEnabled ? "checked" : ""}>
-                    <b>限制 4：</b>隨機 3～10 個團體的成員不能選（若抽到 SOLO，代表所有 solo 歌手都不能選）</label>
+                    <label class="inline"><input type="checkbox" id="groupRuleEnabledChk" ${room.settings.groupRuleEnabled ? "checked" : ""}> <b>限制 4：</b>隨機3~10個團體不能選（含SOLO）</label>
                 </div>
 
-                <div class="field" style="margin-top:14px;">
-                    <label><b>限制 5：每團全場最多可選人數</b></label>
-                    <select id="groupCapRuleType">
-                        <option value="none" ${room.settings.groupCapRuleType === "none" ? "selected" : ""}>不限制</option>
-                        <option value="1" ${room.settings.groupCapRuleType === "1" ? "selected" : ""}>每個團體全場最多只能選 1 位（不分玩家，加總計算）</option>
-                        <option value="2" ${room.settings.groupCapRuleType === "2" ? "selected" : ""}>每個團體全場最多只能選 2 位（不分玩家，加總計算）</option>
-                    </select>
-                    <p class="hint" style="margin-top:4px;">若某成員同時屬於兩個團體，被選走時這兩個團體的名額都會各自算一次。</p>
+                <div style="margin-top:14px;">
+                    <label class="inline"><input type="checkbox" id="groupCapEnabledChk" ${room.settings.groupCapRuleType !== "none" ? "checked" : ""}> <b>限制 5：每人每團上限</b></label>
                 </div>
+                <div class="row" id="groupCapModeBox" style="margin-top:6px; ${room.settings.groupCapRuleType !== "none" ? "" : "display:none"}">
+                    <select id="groupCapRuleTypeSel">
+                        <option value="1" ${room.settings.groupCapRuleType === "1" ? "selected" : ""}>每人每個團體最多選1位</option>
+                        <option value="2" ${room.settings.groupCapRuleType === "2" ? "selected" : ""}>每人每個團體最多選2位</option>
+                    </select>
+                </div>
+                <p class="hint" style="margin-top:4px;">是每位玩家各自的上限，不是全場加總；雙團體成員計入雙方名額。</p>
 
                 <div class="row" style="margin-top:12px;"><button class="btn btn-secondary btn-sm" id="saveWheelRulesBtn">儲存限制規則設定</button></div>
             </div>
 
             <h3 style="margin-top:22px;">📚 偶像資料庫（名字 / 團體 / 出生年 / 出道年 / 國籍）</h3>
-            <p class="hint">出生年、出道年、國籍由你自行填寫或用下方批次匯入。留空不影響一般遊戲，但會影響限制1/2/3是否能正確判定。國籍請填「韓國」代表純韓籍，其餘（如日本、中國、泰國等）視為非純韓籍。若某成員同時以兩個團體活動，團體欄位請填「A團/B團」（例如 IVE/tripleS），該成員會同時出現在兩個團的選秀池分類底下；若限制4隨機抽中其中一團，這個人整個都不能選。</p>
+            <p class="hint">出生年、出道年、國籍可自行填寫或用下方批次匯入，留空不影響一般遊戲但會影響限制1/2/3判定。國籍填「韓國」代表純韓籍。雙團體成員團體欄位填「A團/B團」，會同時出現在兩團的選秀池、且被限制4抽中任一團就整個不能選。</p>
             ${renderIdolEditorTable()}
             <div class="row" style="margin-top:10px;">
                 <input type="text" id="newIdolName" placeholder="姓名" style="width:120px">
@@ -1133,18 +1137,31 @@ function bindLobby(isHost) {
     document.getElementById("shuffleBtn").onclick = shufflePlayers;
     document.getElementById("draftModeSel").onchange = e => updateSettings({ draftMode: e.target.value });
     document.getElementById("minRoundsInput").onchange = e => updateSettings({ minRounds: Math.max(1, parseInt(e.target.value) || 1) });
+
+    document.getElementById("birthEnabledChk")?.addEventListener("change", e => {
+        document.getElementById("birthModeBox").style.display = e.target.checked ? "" : "none";
+    });
+    document.getElementById("debutEnabledChk")?.addEventListener("change", e => {
+        document.getElementById("debutModeBox").style.display = e.target.checked ? "" : "none";
+    });
     document.getElementById("nonKoreanEnabledChk")?.addEventListener("change", e => {
         document.getElementById("nonKoreanModeBox").style.display = e.target.checked ? "" : "none";
     });
+    document.getElementById("groupCapEnabledChk")?.addEventListener("change", e => {
+        document.getElementById("groupCapModeBox").style.display = e.target.checked ? "" : "none";
+    });
 
     document.getElementById("saveWheelRulesBtn")?.addEventListener("click", () => {
+        const birthEnabled = document.getElementById("birthEnabledChk").checked;
+        const debutEnabled = document.getElementById("debutEnabledChk").checked;
         const nonKoreanEnabled = document.getElementById("nonKoreanEnabledChk").checked;
+        const groupCapEnabled = document.getElementById("groupCapEnabledChk").checked;
         updateSettings({
-            birthRuleType: document.getElementById("birthRuleType").value,
-            debutRuleType: document.getElementById("debutRuleType").value,
+            birthRuleType: birthEnabled ? document.getElementById("birthRuleTypeSel").value : "none",
+            debutRuleType: debutEnabled ? document.getElementById("debutRuleTypeSel").value : "none",
             nonKoreanRuleType: nonKoreanEnabled ? document.getElementById("nonKoreanRuleTypeSel").value : "none",
             groupRuleEnabled: document.getElementById("groupRuleEnabledChk").checked,
-            groupCapRuleType: document.getElementById("groupCapRuleType").value
+            groupCapRuleType: groupCapEnabled ? document.getElementById("groupCapRuleTypeSel").value : "none"
         });
     });
 
@@ -1223,26 +1240,26 @@ function renderRulesBanner() {
     const items = [];
 
     if (s.birthRuleType !== "none") {
-        if (rr.bannedBirthYears.length) items.push(`🚫 出生年 <b>${rr.bannedBirthYears.join("、")}</b> 的成員不能選`);
-        else items.push(`🚫 出生年限制已開啟，但資料庫沒有可用的出生年資料`);
+        if (rr.bannedBirthYears.length) items.push(`🚫 出生年 <b>${rr.bannedBirthYears.join("、")}</b> 不能選`);
+        else items.push(`🚫 出生年限制已開啟，但資料庫無資料`);
     }
     if (s.debutRuleType !== "none") {
-        if (rr.bannedDebutYears.length) items.push(`🚫 出道年 <b>${rr.bannedDebutYears.join("、")}</b> 的成員不能選`);
-        else items.push(`🚫 出道年限制已開啟，但資料庫沒有可用的出道年資料`);
+        if (rr.bannedDebutYears.length) items.push(`🚫 出道年 <b>${rr.bannedDebutYears.join("、")}</b> 不能選`);
+        else items.push(`🚫 出道年限制已開啟，但資料庫無資料`);
     }
     if (s.groupRuleEnabled) {
         if (rr.bannedGroups.length) {
             const hasSolo = rr.bannedGroups.includes("SOLO");
-            items.push(`🚫 團體 <b>${rr.bannedGroups.join("、")}</b> 的成員不能選${hasSolo ? "（含所有 SOLO 歌手）" : ""}`);
+            items.push(`🚫 團體 <b>${rr.bannedGroups.join("、")}</b> 不能選${hasSolo ? "（含SOLO）" : ""}`);
         } else {
-            items.push(`🚫 團體限制已開啟，但資料庫沒有可用的團體資料`);
+            items.push(`🚫 團體限制已開啟，但資料庫無資料`);
         }
     }
-    if (s.nonKoreanRuleType === "atLeastOne") items.push(`🌏 每人至少要選 <b>1 位非純韓國籍</b>成員才能結束指名（除非選秀池已無非純韓籍成員可選）`);
-    else if (s.nonKoreanRuleType === "onlyOne") items.push(`🌏 每人<b>最多只能選 1 位</b>非純韓國籍成員，選過之後其餘非純韓籍成員這場都不能再選`);
+    if (s.nonKoreanRuleType === "atLeastOne") items.push(`🌏 每人至少選 <b>1 位非純韓籍</b>才能結束指名`);
+    else if (s.nonKoreanRuleType === "onlyOne") items.push(`🌏 每人<b>最多選 1 位</b>非純韓籍`);
 
-    if (s.groupCapRuleType === "1") items.push(`👥 每個團體全場（不分玩家）最多只能被選 <b>1 位</b>`);
-    else if (s.groupCapRuleType === "2") items.push(`👥 每個團體全場（不分玩家）最多只能被選 <b>2 位</b>`);
+    if (s.groupCapRuleType === "1") items.push(`👥 每人每個團體最多選 <b>1 位</b>`);
+    else if (s.groupCapRuleType === "2") items.push(`👥 每人每個團體最多選 <b>2 位</b>`);
 
     return `<div class="rules-banner">
         <h3>📢 本場選秀限制</h3>
@@ -1292,7 +1309,7 @@ function renderIdolPoolHtml() {
         html += `<div class="group-section"><div class="group-title">${g} (${members.length}人)</div>`;
         members.forEach(idol => {
             const taken = isIdolTaken(idol);
-            const restricted = !taken && (isRestrictedByRules(idol) || isBlockedForPlayer(idol, clientId) || isGroupCapReached(idol));
+            const restricted = !taken && (isRestrictedByRules(idol) || isBlockedForPlayer(idol, clientId) || isGroupCapReached(idol, clientId));
             const disabled = taken || restricted || !myTurn;
             const cls = taken ? "taken" : (restricted ? "restricted" : "");
             html += `<button class="idol-btn ${cls}" title="${idolTooltip(idol)}" data-pick="${idol.name}|${idol.group}" ${disabled ? "disabled" : ""}>${idol.name}</button>`;
@@ -1429,15 +1446,9 @@ async function leaveRoom() {
     }
 
     const msg = amHost
-        ? "你是房主，退出後這個房間會直接關閉，所有玩家都會被移出遊戲。確定要退出嗎？"
+        ? "確定要退出嗎？退出後房主身分會轉移給下一位玩家，房間仍會保留，之後可以用同一個邀請連結或房號重新加入。"
         : "確定要退出這場遊戲嗎？退出後你會離開房間，其他玩家不受影響會繼續遊戲。";
     if (!confirm(msg)) return;
-
-    if (amHost) {
-        await roomRef(roomCode).delete();
-        goHome();
-        return;
-    }
 
     await db.runTransaction(async t => {
         const ref = roomRef(roomCode);
@@ -1446,6 +1457,11 @@ async function leaveRoom() {
         const r = snap.data();
 
         const players = r.players.filter(p => p.id !== clientId);
+        if (players.length === 0) {
+            t.delete(ref);
+            return;
+        }
+        const hostId = amHost ? players[0].id : r.hostId;
         const finishedPlayerIds = r.finishedPlayerIds.filter(id => id !== clientId);
 
         let draftBoard = r.draftBoard.map(rnd => {
@@ -1462,7 +1478,7 @@ async function leaveRoom() {
             status = ensured.done ? "finished" : "playing";
         }
 
-        t.update(ref, { players, finishedPlayerIds, draftBoard, status });
+        t.update(ref, { hostId, players, finishedPlayerIds, draftBoard, status });
     });
     goHome();
 }
