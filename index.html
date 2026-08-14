@@ -59,6 +59,11 @@ textarea { width: 100%; font-family: monospace; }
 }
 .idol-btn:hover:not(:disabled) { background: var(--primary); transform: scale(1.08); }
 .idol-btn:disabled { opacity: .35; cursor: not-allowed; }
+.idol-btn.taken { opacity: 1; background:#2a2a2a; border:1px solid #555; color:#777; text-decoration: line-through; }
+.idol-btn.taken:hover { background:#2a2a2a; transform:none; }
+.idol-btn.restricted { opacity: 1; background:#3a1220; border:1px solid var(--danger); color:#ff8fa3; }
+.idol-btn.restricted:hover { background:#3a1220; transform:none; }
+.idol-btn.restricted::after { content: " ❌"; }
 
 /* ===== 美化按鈕 ===== */
 .btn {
@@ -80,6 +85,7 @@ textarea { width: 100%; font-family: monospace; }
 .btn-lg { padding: 15px 40px; font-size: 18px; border-radius: 14px; }
 .icon-btn { background:#2a2a3a; border:1px solid var(--line); color:#ddd; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:13px; }
 .icon-btn:hover { background:#3a3a50; }
+.icon-btn:disabled { opacity:.3; cursor:not-allowed; }
 
 /* 表格 */
 table { width: 100%; border-collapse: collapse; background: var(--panel-2); border-radius: 12px; overflow: hidden; margin-top: 15px; table-layout: fixed; }
@@ -100,11 +106,11 @@ table.editor input { width: 100%; padding: 6px 8px; font-size: 13px; }
 
 .player-chip { background:#25253a; padding:8px 14px; border-radius: 20px; margin: 4px; display:inline-flex; align-items:center; gap:8px; }
 
-/* 轉盤 */
-.wheel-wrap { display:flex; flex-direction: column; align-items:center; gap: 16px; padding: 10px 0 4px; }
-#wheelCanvas { border-radius: 50%; box-shadow: 0 0 30px rgba(255,105,180,.5); background:#111; }
-.wheel-pointer { font-size: 30px; margin-bottom: -14px; }
-.wheel-result { font-size: 22px; font-weight: bold; color: #ffd700; min-height: 32px; }
+/* 限制規則公告 */
+.rules-banner { background:#25253a; border:1px solid var(--line); border-radius:12px; padding:14px 18px; margin-bottom:16px; }
+.rules-banner h3 { margin: 0 0 8px; color: var(--accent); font-size:16px; }
+.rules-banner ul { margin: 0; padding-left: 20px; line-height: 1.8; }
+.rules-banner .none { color:#999; }
 
 .modal-backdrop { position: fixed; inset:0; background: rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:50; }
 .modal { background: var(--panel); border-radius: 16px; padding: 24px; max-width: 480px; width: 92%; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
@@ -157,74 +163,242 @@ let db = null;
 let roomCode = new URLSearchParams(location.search).get("room");
 let room = null;           // 目前房間資料（本地鏡像，來自 Firestore onSnapshot）
 let unsub = null;
-let wheelAnimating = false;
+let localPendingPick = null;  // 我正在考慮的選擇，純本地狀態，不會同步給其他玩家
+let idolSearchQuery = "";     // 選秀名單搜尋框的關鍵字，純本地狀態
+let idolSearchFocused = false; // 用來在重新渲染後恢復搜尋框的游標焦點
 
 // ==================== 偶像預設資料 ====================
 const BASE_IDOLS = [
-{ name:"Wonyoung", group:"IVE" }, { name:"Yujin", group:"IVE" }, { name:"Gaeul", group:"IVE" },
-{ name:"Rei", group:"IVE" }, { name:"Liz", group:"IVE" }, { name:"Leeseo", group:"IVE" },
-{ name:"Sakura", group:"LE SSERAFIM" }, { name:"Chaewon", group:"LE SSERAFIM" },
-{ name:"Yunjin", group:"LE SSERAFIM" }, { name:"Kazuha", group:"LE SSERAFIM" }, { name:"Eunchae", group:"LE SSERAFIM" },
-{ name:"Karina", group:"aespa" }, { name:"Giselle", group:"aespa" }, { name:"Winter", group:"aespa" }, { name:"NingNing", group:"aespa" },
-{ name:"Nayeon", group:"TWICE" }, { name:"Jeongyeon", group:"TWICE" }, { name:"Momo", group:"TWICE" },
-{ name:"Sana", group:"TWICE" }, { name:"Jihyo", group:"TWICE" }, { name:"Mina", group:"TWICE" },
-{ name:"Dahyun", group:"TWICE" }, { name:"Chaeyoung", group:"TWICE" }, { name:"Tzuyu", group:"TWICE" },
-{ name:"Yeji", group:"ITZY" }, { name:"Lia", group:"ITZY" }, { name:"Ryujin", group:"ITZY" },
-{ name:"Chaeryeong", group:"ITZY" }, { name:"Yuna", group:"ITZY" },
-{ name:"Lily", group:"NMIXX" }, { name:"Haewon", group:"NMIXX" }, { name:"Sullyoon", group:"NMIXX" },
-{ name:"Jiwoo", group:"NMIXX" }, { name:"Bae", group:"NMIXX" }, { name:"Kyujin", group:"NMIXX" },
-{ name:"Hayoung", group:"fromis_9" }, { name:"Jiwon", group:"fromis_9" }, { name:"Chaeyoung", group:"fromis_9" },
-{ name:"Nagyung", group:"fromis_9" }, { name:"Jiheon", group:"fromis_9" },
-{ name:"Sumin", group:"STAYC" }, { name:"Sieun", group:"STAYC" }, { name:"Isa", group:"STAYC" },
-{ name:"Seeun", group:"STAYC" }, { name:"Yoon", group:"STAYC" }, { name:"J", group:"STAYC" },
-{ name:"Carmen", group:"Hearts2Hearts" }, { name:"Jiwoo", group:"Hearts2Hearts" }, { name:"Yuha", group:"Hearts2Hearts" },
-{ name:"Stella", group:"Hearts2Hearts" }, { name:"Juun", group:"Hearts2Hearts" }, { name:"A-na", group:"Hearts2Hearts" },
-{ name:"Ian", group:"Hearts2Hearts" }, { name:"Ye-on", group:"Hearts2Hearts" },
-{ name:"Woni", group:"RESCENE" }, { name:"Liv", group:"RESCENE" }, { name:"Minami", group:"RESCENE" },
-{ name:"May", group:"RESCENE" }, { name:"Zena", group:"RESCENE" },
-{ name:"Keena", group:"FIFTY FIFTY" }, { name:"ChanelleMoon", group:"FIFTY FIFTY" }, { name:"Yewon", group:"FIFTY FIFTY" },
-{ name:"Hana", group:"FIFTY FIFTY" }, { name:"Athena", group:"FIFTY FIFTY" },
-{ name:"Leesol", group:"KiiiKiii" }, { name:"Sui", group:"KiiiKiii" }, { name:"Jiyu", group:"KiiiKiii" },
-{ name:"Haum", group:"KiiiKiii" }, { name:"Kya", group:"KiiiKiii" },
-{ name:"Yunah", group:"ILLIT" }, { name:"Minju", group:"ILLIT" }, { name:"Moka", group:"ILLIT" },
-{ name:"Wonhee", group:"ILLIT" }, { name:"Iroha", group:"ILLIT" },
-{ name:"Miyeon", group:"i-dle" }, { name:"Minnie", group:"i-dle" }, { name:"Seoyeon", group:"i-dle" },
-{ name:"Yuqi", group:"i-dle" }, { name:"Shuhwa", group:"i-dle" },
-{ name:"SeoYeon", group:"tripleS" }, { name:"HyeRin", group:"tripleS" }, { name:"JiWoo", group:"tripleS" },
-{ name:"ChaeYeon", group:"tripleS" }, { name:"YooYeon", group:"tripleS" }, { name:"SooMin", group:"tripleS" },
-{ name:"NaKyoung", group:"tripleS" }, { name:"YuBin", group:"tripleS" }, { name:"Kaede", group:"tripleS" },
-{ name:"DaHyun", group:"tripleS" }, { name:"Kotone", group:"tripleS" }, { name:"YeonJi", group:"tripleS" },
-{ name:"Nien", group:"tripleS" }, { name:"SoHyun", group:"tripleS" }, { name:"Xinyu", group:"tripleS" },
-{ name:"Mayu", group:"tripleS" }, { name:"Lynn", group:"tripleS" }, { name:"JooBin", group:"tripleS" },
-{ name:"HaYeon", group:"tripleS" }, { name:"ShiOn", group:"tripleS" }, { name:"ChaeWon", group:"tripleS" },
-{ name:"Sullin", group:"tripleS" }, { name:"SeoAh", group:"tripleS" }, { name:"JiYeon", group:"tripleS" },
-{ name:"MAI", group:"izna" }, { name:"BANG JEE MIN", group:"izna" }, { name:"KOKO", group:"izna" },
-{ name:"RYU SA RANG", group:"izna" }, { name:"CHOI JUNG EUN", group:"izna" }, { name:"JEONG SAE BI", group:"izna" },
-{ name:"Chodan", group:"QWER" }, { name:"Magenta", group:"QWER" }, { name:"Hina", group:"QWER" }, { name:"Siyeon", group:"QWER" },
-{ name:"Sooin", group:"MEOVV" }, { name:"Gawon", group:"MEOVV" }, { name:"Anna", group:"MEOVV" },
-{ name:"Narin", group:"MEOVV" }, { name:"Ella", group:"MEOVV" },
-{ name:"Choi Yu Jin", group:"Kep1er" }, { name:"Shen Xiao Ting", group:"Kep1er" }, { name:"Kim Chae Hyun", group:"Kep1er" },
-{ name:"Kim Da Yeon", group:"Kep1er" }, { name:"Ezaki Hikaru", group:"Kep1er" }, { name:"Huening Bahiyyih", group:"Kep1er" },
-{ name:"MASHIRO", group:"MADEIN" }, { name:"MiU", group:"MADEIN" }, { name:"SERINA", group:"MADEIN" }, { name:"NAGOMI", group:"MADEIN" },
-{ name:"Seoi", group:"H1-KEY" }, { name:"Riina", group:"H1-KEY" }, { name:"Hwiseo", group:"H1-KEY" }, { name:"Yel", group:"H1-KEY" },
-{ name:"HITOMI", group:"SAY MY NAME" }, { name:"SHUIE", group:"SAY MY NAME" }, { name:"MEI", group:"SAY MY NAME" },
-{ name:"KANNY", group:"SAY MY NAME" }, { name:"SOHA", group:"SAY MY NAME" }, { name:"DOHEE", group:"SAY MY NAME" },
-{ name:"JUNHWI", group:"SAY MY NAME" }, { name:"SEUNGJOO", group:"SAY MY NAME" },
-{ name:"Ruka", group:"BABYMONSTER" }, { name:"Pharita", group:"BABYMONSTER" }, { name:"Asa", group:"BABYMONSTER" },
-{ name:"Ahyeon", group:"BABYMONSTER" }, { name:"Rami", group:"BABYMONSTER" }, { name:"Rora", group:"BABYMONSTER" }, { name:"Chiquita", group:"BABYMONSTER" },
-{ name:"Choi Yena", group:"SOLO" }, { name:"Kwon Eunbi", group:"SOLO" }, { name:"Lee ChaeYeon", group:"SOLO" }, { name:"Jo YuRi", group:"SOLO" },
-{ name:"Kim Chung Ha", group:"SOLO" }, { name:"Kim Se Jeong", group:"SOLO" },
-{ name:"Hyojung", group:"OH MY GIRL" }, { name:"Mimi", group:"OH MY GIRL" }, { name:"YooA", group:"OH MY GIRL" },
-{ name:"Seunghee", group:"OH MY GIRL" }, { name:"Yubin", group:"OH MY GIRL" }, { name:"Arin", group:"OH MY GIRL" },
-{ name:"SeolA", group:"WJSN" }, { name:"BoNa", group:"WJSN" }, { name:"Exy", group:"WJSN" },
-{ name:"SooBin", group:"WJSN" }, { name:"Luda", group:"WJSN" }, { name:"DaWon", group:"WJSN" },
-{ name:"EunSeo", group:"WJSN" }, { name:"YeoReum", group:"WJSN" }, { name:"DaYoung", group:"WJSN" }, { name:"YeonJung", group:"WJSN" },
-{ name:"JiU", group:"Dreamcatcher" }, { name:"SuA", group:"Dreamcatcher" }, { name:"SiYeon", group:"Dreamcatcher" },
-{ name:"HanDong", group:"Dreamcatcher" }, { name:"YooHyeon", group:"Dreamcatcher" }, { name:"DaMi", group:"Dreamcatcher" }, { name:"GaHyun", group:"Dreamcatcher" }
-].map(i => ({ name: i.name, group: i.group, birthYear: "", debutYear: "" }));
+{ name:"Gaeul", group:"IVE", nationality:"韓國", birthYear:"2002", debutYear:"2021" },
+{ name:"Yujin", group:"IVE", nationality:"韓國", birthYear:"2003", debutYear:"2021" }, 
+{ name:"Rei", group:"IVE", nationality:"日本", birthYear:"2004", debutYear:"2021" }, 
+{ name:"Wonyoung", group:"IVE", nationality:"韓國", birthYear:"2004", debutYear:"2021" }, 
+{ name:"Liz", group:"IVE", nationality:"韓國", birthYear:"2004", debutYear:"2021" }, 
+{ name:"Leeseo", group:"IVE", nationality:"韓國", birthYear:"2007", debutYear:"2021" },
+
+{ name:"Sakura", group:"LE SSERAFIM", nationality:"日本", birthYear:"1998", debutYear:"2022" }, 
+{ name:"Chaewon", group:"LE SSERAFIM", nationality:"韓國", birthYear:"2000", debutYear:"2022" },
+{ name:"Yunjin", group:"LE SSERAFIM", nationality:"韓國/美國", birthYear:"2001", debutYear:"2022" }, 
+{ name:"Kazuha", group:"LE SSERAFIM", nationality:"日本", birthYear:"2003", debutYear:"2022" }, 
+{ name:"Eunchae", group:"LE SSERAFIM", nationality:"韓國", birthYear:"2006", debutYear:"2022" },
+
+{ name:"Karina", group:"aespa", nationality:"韓國", birthYear:"2000", debutYear:"2020" }, 
+{ name:"Giselle", group:"aespa", nationality:"日本/韓國", birthYear:"2000", debutYear:"2020" }, 
+{ name:"Winter", group:"aespa", nationality:"韓國", birthYear:"2001", debutYear:"2020" }, 
+{ name:"NingNing", group:"aespa", nationality:"中國", birthYear:"2002", debutYear:"2020" },
+
+{ name:"Nayeon", group:"TWICE", nationality:"韓國", birthYear:"1995", debutYear:"2015" }, 
+{ name:"Jeongyeon", group:"TWICE", nationality:"韓國", birthYear:"1996", debutYear:"2015" }, 
+{ name:"Momo", group:"TWICE", nationality:"日本", birthYear:"1996", debutYear:"2015" },
+{ name:"Sana", group:"TWICE", nationality:"日本", birthYear:"1996", debutYear:"2015" }, 
+{ name:"Jihyo", group:"TWICE", nationality:"韓國", birthYear:"1997", debutYear:"2015" }, 
+{ name:"Mina", group:"TWICE", nationality:"日本", birthYear:"1997", debutYear:"2015" },
+{ name:"Dahyun", group:"TWICE", nationality:"韓國", birthYear:"1998", debutYear:"2015" }, 
+{ name:"Chaeyoung", group:"TWICE", nationality:"韓國", birthYear:"1999", debutYear:"2015" }, 
+{ name:"Tzuyu", group:"TWICE", nationality:"台灣", birthYear:"1999", debutYear:"2015" },
+
+{ name:"Yeji", group:"ITZY", nationality:"韓國", birthYear:"2000", debutYear:"2019" }, 
+{ name:"Lia", group:"ITZY", nationality:"韓國", birthYear:"2000", debutYear:"2019" }, 
+{ name:"Ryujin", group:"ITZY", nationality:"韓國", birthYear:"2001", debutYear:"2019" },
+{ name:"Chaeryeong", group:"ITZY", nationality:"韓國", birthYear:"2001", debutYear:"2019" }, 
+{ name:"Yuna", group:"ITZY", nationality:"韓國", birthYear:"2003", debutYear:"2019" },
+
+{ name:"Lily", group:"NMIXX", nationality:"韓國/澳洲", birthYear:"2002", debutYear:"2022" }, 
+{ name:"Haewon", group:"NMIXX", nationality:"韓國", birthYear:"2003", debutYear:"2022" }, 
+{ name:"Sullyoon", group:"NMIXX", nationality:"韓國", birthYear:"2004", debutYear:"2022" },
+{ name:"Bae", group:"NMIXX", nationality:"韓國", birthYear:"2004", debutYear:"2022" }, 
+{ name:"Jiwoo", group:"NMIXX", nationality:"韓國", birthYear:"2005", debutYear:"2022" }, 
+{ name:"Kyujin", group:"NMIXX", nationality:"韓國", birthYear:"2006", debutYear:"2022" },
+
+{ name:"Hayoung", group:"fromis_9", nationality:"韓國", birthYear:"1997", debutYear:"2018" }, 
+{ name:"Jiwon", group:"fromis_9", nationality:"韓國", birthYear:"1998", debutYear:"2018" }, 
+{ name:"Chaeyoung", group:"fromis_9", nationality:"韓國", birthYear:"2000", debutYear:"2018" },
+{ name:"Nagyung", group:"fromis_9", nationality:"韓國", birthYear:"2000", debutYear:"2018" }, 
+{ name:"Jiheon", group:"fromis_9", nationality:"韓國", birthYear:"2003", debutYear:"2018" },
+
+{ name:"Sumin", group:"STAYC", nationality:"韓國", birthYear:"2001", debutYear:"2020" }, 
+{ name:"Sieun", group:"STAYC", nationality:"韓國", birthYear:"2001", debutYear:"2020" }, 
+{ name:"Isa", group:"STAYC", nationality:"韓國", birthYear:"2002", debutYear:"2020" },
+{ name:"Seeun", group:"STAYC", nationality:"韓國", birthYear:"2003", debutYear:"2020" }, 
+{ name:"Yoon", group:"STAYC", nationality:"韓國", birthYear:"2004", debutYear:"2020" }, 
+{ name:"J", group:"STAYC", nationality:"韓國", birthYear:"2004", debutYear:"2020" },
+
+{ name:"Carmen", group:"Hearts2Hearts", nationality:"印尼", birthYear:"2006", debutYear:"2025" }, 
+{ name:"Jiwoo", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2006", debutYear:"2025" }, 
+{ name:"Yuha", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2007", debutYear:"2025" },
+{ name:"Stella", group:"Hearts2Hearts", nationality:"韓國/加拿大", birthYear:"2007", debutYear:"2025" }, 
+{ name:"Juun", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2008", debutYear:"2025" }, 
+{ name:"A-na", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2008", debutYear:"2025" },
+{ name:"Ian", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2009", debutYear:"2025" }, 
+{ name:"Ye-on", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2010", debutYear:"2025" },
+
+{ name:"Woni", group:"RESCENE", nationality:"韓國", birthYear:"2004", debutYear:"2024" }, 
+{ name:"Liv", group:"RESCENE", nationality:"韓國", birthYear:"2006", debutYear:"2024" }, 
+{ name:"Minami", group:"RESCENE", nationality:"日本", birthYear:"2006", debutYear:"2024" },
+{ name:"May", group:"RESCENE", nationality:"韓國", birthYear:"2008", debutYear:"2024" }, 
+{ name:"Zena", group:"RESCENE", nationality:"韓國", birthYear:"2008", debutYear:"2024" },
+
+{ name:"Keena", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2002", debutYear:"2022" }, 
+{ name:"ChanelleMoon", group:"FIFTY FIFTY", nationality:"韓國/美國", birthYear:"2003", debutYear:"2022" }, 
+{ name:"Yewon", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2005", debutYear:"2022" },
+{ name:"Hana", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2006", debutYear:"2022" }, 
+{ name:"Athena", group:"FIFTY FIFTY", nationality:"韓國/瑞典", birthYear:"2007", debutYear:"2022" },
+
+{ name:"Leesol", group:"KiiiKiii", nationality:"韓國", birthYear:"2005", debutYear:"2025" }, 
+{ name:"Sui", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025" }, 
+{ name:"Jiyu", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025" },
+{ name:"Haum", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025" }, 
+{ name:"Kya", group:"KiiiKiii", nationality:"韓國", birthYear:"2010", debutYear:"2025" },
+
+{ name:"JULIE", group:"KISS OF LIFE", nationality:"韓國/美國", birthYear:"2000", debutYear:"2023" },
+{ name:"NATTY", group:"KISS OF LIFE", nationality:"泰國", birthYear:"2002", debutYear:"2023" },
+{ name:"BELLE", group:"KISS OF LIFE", nationality:"韓國/美國", birthYear:"2004", debutYear:"2023" },
+{ name:"HANEUL", group:"KISS OF LIFE", nationality:"韓國", birthYear:"2005", debutYear:"2023" },
+
+{ name:"Yunah", group:"ILLIT", nationality:"韓國", birthYear:"2004", debutYear:"2024" }, 
+{ name:"Minju", group:"ILLIT", nationality:"韓國", birthYear:"2004", debutYear:"2024" }, 
+{ name:"Moka", group:"ILLIT", nationality:"日本", birthYear:"2004", debutYear:"2024" },
+{ name:"Wonhee", group:"ILLIT", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
+{ name:"Iroha", group:"ILLIT", nationality:"日本", birthYear:"2008", debutYear:"2024" },
+
+{ name:"Miyeon", group:"i-dle", nationality:"韓國", birthYear:"1997", debutYear:"2018" }, 
+{ name:"Minnie", group:"i-dle", nationality:"泰國", birthYear:"1997", debutYear:"2018" }, 
+{ name:"Seoyeon", group:"i-dle", nationality:"韓國", birthYear:"1998", debutYear:"2018" },
+{ name:"Yuqi", group:"i-dle", nationality:"中國", birthYear:"1999", debutYear:"2018" }, 
+{ name:"Shuhwa", group:"i-dle", nationality:"台灣", birthYear:"2000", debutYear:"2018" },
+
+{ name:"SeoYeon", group:"tripleS", nationality:"韓國", birthYear:"2003", debutYear:"2023" }, 
+{ name:"HyeRin", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023" }, 
+{ name:"JiWoo", group:"tripleS", nationality:"韓國", birthYear:"2005", debutYear:"2023" },
+{ name:"ChaeYeon", group:"tripleS", nationality:"韓國", birthYear:"2004", debutYear:"2023" }, 
+{ name:"YooYeon", group:"tripleS", nationality:"韓國", birthYear:"2001", debutYear:"2023" }, 
+{ name:"SooMin", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023" },
+{ name:"NaKyoung", group:"tripleS", nationality:"韓國", birthYear:"2002", debutYear:"2023" }, 
+{ name:"YuBin", group:"tripleS", nationality:"韓國", birthYear:"2005", debutYear:"2023" }, 
+{ name:"Kaede", group:"tripleS", nationality:"日本", birthYear:"2005", debutYear:"2023" },
+{ name:"DaHyun", group:"tripleS", nationality:"韓國", birthYear:"2003", debutYear:"2023" }, 
+{ name:"Kotone", group:"tripleS", nationality:"日本", birthYear:"2004", debutYear:"2023" }, 
+{ name:"YeonJi", group:"tripleS", nationality:"韓國", birthYear:"2008", debutYear:"2023" },
+{ name:"Nien", group:"tripleS", nationality:"台灣", birthYear:"2003", debutYear:"2023" }, 
+{ name:"SoHyun", group:"tripleS", nationality:"韓國", birthYear:"2002", debutYear:"2023" }, 
+{ name:"Xinyu", group:"tripleS", nationality:"中國", birthYear:"2002", debutYear:"2023" },
+{ name:"Mayu", group:"tripleS", nationality:"日本", birthYear:"2002", debutYear:"2023" }, 
+{ name:"Lynn", group:"tripleS", nationality:"日本", birthYear:"2006", debutYear:"2023" }, 
+{ name:"JooBin", group:"tripleS", nationality:"韓國", birthYear:"2009", debutYear:"2023" },
+{ name:"HaYeon", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023" }, 
+{ name:"ShiOn", group:"tripleS", nationality:"韓國", birthYear:"2006", debutYear:"2023" }, 
+{ name:"ChaeWon", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023" },
+{ name:"Sullin", group:"tripleS", nationality:"泰國", birthYear:"2006", debutYear:"2023" }, 
+{ name:"SeoAh", group:"tripleS", nationality:"韓國", birthYear:"2010", debutYear:"2023" }, 
+{ name:"JiYeon", group:"tripleS", nationality:"韓國", birthYear:"2004", debutYear:"2023" },
+
+{ name:"MAI", group:"izna", nationality:"日本", birthYear:"2004", debutYear:"2024" }, 
+{ name:"BANG JEE MIN", group:"izna", nationality:"韓國", birthYear:"2005", debutYear:"2024" }, 
+{ name:"KOKO", group:"izna", nationality:"日本", birthYear:"2006", debutYear:"2024" },
+{ name:"RYU SA RANG", group:"izna", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
+{ name:"CHOI JUNG EUN", group:"izna", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
+{ name:"JEONG SAE BI", group:"izna", nationality:"韓國", birthYear:"2008", debutYear:"2024" },
+
+{ name:"Sooin", group:"MEOVV", nationality:"韓國", birthYear:"2005", debutYear:"2024" }, 
+{ name:"Gawon", group:"MEOVV", nationality:"韓國/美國", birthYear:"2005", debutYear:"2024" }, 
+{ name:"Anna", group:"MEOVV", nationality:"日本", birthYear:"2005", debutYear:"2024" },
+{ name:"Narin", group:"MEOVV", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
+{ name:"Ella", group:"MEOVV", nationality:"韓國/美國", birthYear:"2008", debutYear:"2024" },
+
+{ name:"Choi Yu Jin", group:"Kep1er", nationality:"韓國", birthYear:"1996", debutYear:"2022" }, 
+{ name:"Shen Xiao Ting", group:"Kep1er", nationality:"中國", birthYear:"1999", debutYear:"2022" }, 
+{ name:"Kim Chae Hyun", group:"Kep1er", nationality:"韓國", birthYear:"2002", debutYear:"2022" },
+{ name:"Kim Da Yeon", group:"Kep1er", nationality:"韓國", birthYear:"2003", debutYear:"2022" }, 
+{ name:"Ezaki Hikaru", group:"Kep1er", nationality:"日本", birthYear:"2004", debutYear:"2022" }, 
+{ name:"Huening Bahiyyih", group:"Kep1er", nationality:"韓國/美國", birthYear:"2004", debutYear:"2022" },
+
+{ name:"MASHIRO", group:"MADEIN", nationality:"日本", birthYear:"1999", debutYear:"2024" }, 
+{ name:"MiU", group:"MADEIN", nationality:"日本", birthYear:"2003", debutYear:"2024" }, 
+{ name:"SERINA", group:"MADEIN", nationality:"日本", birthYear:"2006", debutYear:"2024" }, 
+{ name:"NAGOMI", group:"MADEIN", nationality:"日本", birthYear:"2007", debutYear:"2024" },
+
+{ name:"Seoi", group:"H1-KEY", nationality:"韓國", birthYear:"2000", debutYear:"2022" }, 
+{ name:"Riina", group:"H1-KEY", nationality:"韓國", birthYear:"2001", debutYear:"2022" }, 
+{ name:"Hwiseo", group:"H1-KEY", nationality:"韓國", birthYear:"2002", debutYear:"2022" }, 
+{ name:"Yel", group:"H1-KEY", nationality:"韓國", birthYear:"2004", debutYear:"2022" },
+
+{ name:"Yeowon", group:"USPEER", nationality:"韓國", birthYear:"2006", debutYear:"2025" },
+{ name:"Soee", group:"USPEER", nationality:"韓國", birthYear:"2007", debutYear:"2025" },
+{ name:"Sian", group:"USPEER", nationality:"韓國", birthYear:"2007", debutYear:"2025" },
+{ name:"Seoyu", group:"USPEER", nationality:"韓國", birthYear:"2007", debutYear:"2025" },
+{ name:"Daon", group:"USPEER", nationality:"韓國", birthYear:"2008", debutYear:"2025" },
+{ name:"Chaena", group:"USPEER", nationality:"韓國", birthYear:"2009", debutYear:"2025" },
+{ name:"Roa", group:"USPEER", nationality:"韓國", birthYear:"2009", debutYear:"2025" },
+
+{ name:"HITOMI", group:"SAY MY NAME", nationality:"日本", birthYear:"2001", debutYear:"2024" }, 
+{ name:"SHUIE", group:"SAY MY NAME", nationality:"中國", birthYear:"2004", debutYear:"2024" }, 
+{ name:"MEI", group:"SAY MY NAME", nationality:"日本", birthYear:"2005", debutYear:"2024" },
+{ name:"KANNY", group:"SAY MY NAME", nationality:"泰國", birthYear:"2005", debutYear:"2024" }, 
+{ name:"SOHA", group:"SAY MY NAME", nationality:"韓國", birthYear:"2006", debutYear:"2024" }, 
+{ name:"DOHEE", group:"SAY MY NAME", nationality:"韓國", birthYear:"2006", debutYear:"2024" },
+{ name:"JUNHWI", group:"SAY MY NAME", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
+{ name:"SEUNGJOO", group:"SAY MY NAME", nationality:"韓國", birthYear:"2010", debutYear:"2024" },
+
+{ name:"Ruka", group:"BABYMONSTER", nationality:"日本", birthYear:"2002", debutYear:"2024" }, 
+{ name:"Pharita", group:"BABYMONSTER", nationality:"泰國", birthYear:"2005", debutYear:"2024" }, 
+{ name:"Asa", group:"BABYMONSTER", nationality:"日本", birthYear:"2006", debutYear:"2024" },
+{ name:"Ahyeon", group:"BABYMONSTER", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
+{ name:"Rami", group:"BABYMONSTER", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
+{ name:"Rora", group:"BABYMONSTER", nationality:"韓國", birthYear:"2008", debutYear:"2024" }, 
+{ name:"Chiquita", group:"BABYMONSTER", nationality:"泰國", birthYear:"2009", debutYear:"2024" },
+
+{ name:"Lim Na Young", group:"I.O.I", nationality:"韓國", birthYear:"1995", debutYear:"2016" }, 
+{ name:"Kim Chung Ha", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1996", debutYear:"2016" }, 
+{ name:"Kim Se Jeong", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1996", debutYear:"2016" },
+{ name:"Jung Chae Yeon", group:"I.O.I", nationality:"韓國", birthYear:"1997", debutYear:"2016" }, 
+{ name:"Zhou Jie Qiong", group:"I.O.I", nationality:"中國", birthYear:"1998", debutYear:"2016" },
+{ name:"Kim So Hye", group:"I.O.I", nationality:"中國", birthYear:"1999", debutYear:"2016" },
+{ name:"Yoo Yeon Jung", group:"I.O.I/WJSN", nationality:"韓國", birthYear:"1999", debutYear:"2016" },
+{ name:"Choi Yoo Jung", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2016" },
+{ name:"Kim Do Yeon", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2016" },
+{ name:"Kang Mi Na", group:"I.O.I", nationality:"韓國", birthYear:"1999", debutYear:"2016" },
+{ name:"Jeon So Mi", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"2001", debutYear:"2016" },
+
+{ name:"Hyojung", group:"OH MY GIRL", nationality:"韓國", birthYear:"1994", debutYear:"2015" }, 
+{ name:"Mimi", group:"OH MY GIRL", nationality:"韓國", birthYear:"1995", debutYear:"2015" }, 
+{ name:"YooA", group:"OH MY GIRL", nationality:"韓國", birthYear:"1995", debutYear:"2015" },
+{ name:"Seunghee", group:"OH MY GIRL", nationality:"韓國", birthYear:"1996", debutYear:"2015" }, 
+{ name:"Yubin", group:"OH MY GIRL", nationality:"韓國", birthYear:"1997", debutYear:"2015" }, 
+{ name:"Arin", group:"OH MY GIRL", nationality:"韓國", birthYear:"1999", debutYear:"2015" },
+
+{ name:"SeolA", group:"WJSN", nationality:"韓國", birthYear:"1994", debutYear:"2016" }, 
+{ name:"Bona", group:"WJSN", nationality:"韓國", birthYear:"1995", debutYear:"2016" }, 
+{ name:"Exy", group:"WJSN", nationality:"韓國", birthYear:"1995", debutYear:"2016" },
+{ name:"Soobin", group:"WJSN", nationality:"韓國", birthYear:"199+", debutYear:"2016" }, 
+{ name:"Luda", group:"WJSN", nationality:"韓國", birthYear:"1997", debutYear:"2016" }, 
+{ name:"Dawon", group:"WJSN", nationality:"韓國", birthYear:"1997", debutYear:"2016" },
+{ name:"Eunseo", group:"WJSN", nationality:"韓國", birthYear:"1998", debutYear:"2016" }, 
+{ name:"Yeoreum", group:"WJSN", nationality:"韓國", birthYear:"1999", debutYear:"2016" }, 
+{ name:"Dayoung", group:"WJSN/SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2016" }, 
+
+{ name:"Choi Yena", group:"SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2022" }, 
+{ name:"Kwon Eunbi", group:"SOLO", nationality:"韓國", birthYear:"1995", debutYear:"2021" }, 
+{ name:"Lee ChaeYeon", group:"SOLO", nationality:"韓國", birthYear:"2000", debutYear:"2022" }, 
+{ name:"Jo YuRi", group:"SOLO", nationality:"韓國", birthYear:"2001", debutYear:"2021" },
+{ name:"GYUBI", group:"SOLO", nationality:"韓國", birthYear:"2006", debutYear:"2024" },
+
+].map(i => ({ name: i.name, group: i.group, birthYear: i.birthYear || "", debutYear: i.debutYear || "", nationality: i.nationality }));
+
+// ==================== Firebase 固定設定（房主已內建，所有玩家共用同一個雲端資料庫） ====================
+const HARDCODED_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCZr668nVZOSLp3KSL6RltGxSIlYFCZFwc",
+  authDomain: "test-9cb36.firebaseapp.com",
+  projectId: "test-9cb36",
+  storageBucket: "test-9cb36.firebasestorage.app",
+  messagingSenderId: "969352645469",
+  appId: "1:969352645469:web:547113e500fefea750b6b4",
+  measurementId: "G-Q3K7M9FFVE"
+};
 
 // ==================== Firebase 連線設定 ====================
 function loadFirebaseConfig() {
+    // 優先使用內建設定，這樣任何人打開網頁都不需要手動輸入任何東西
+    if (HARDCODED_FIREBASE_CONFIG && HARDCODED_FIREBASE_CONFIG.apiKey) return HARDCODED_FIREBASE_CONFIG;
     try { return JSON.parse(localStorage.getItem(LS_CONFIG) || "null"); }
     catch { return null; }
 }
@@ -257,7 +431,7 @@ let roomClosedByHost = false;
 
 function listenRoom(code) {
     if (unsub) unsub();
-    everConnectedRoom = false; roomClosedByHost = false;
+    everConnectedRoom = false; roomClosedByHost = false; localPendingPick = null; idolSearchQuery = ""; idolSearchFocused = false;
     setConnStatus("", "⏳ 連接房間中…");
     unsub = roomRef(code).onSnapshot(snap => {
         if (!snap.exists) {
@@ -284,12 +458,19 @@ async function createRoom(hostName) {
         hostId: clientId,
         createdAt: Date.now(),
         status: "lobby",
-        settings: { draftMode: "normal", minRounds: 2, wheelEnabled: false, wheelExcludedGroups: [], wheelExcludedNames: "" },
+        settings: {
+            draftMode: "normal", minRounds: 2,
+            birthRuleType: "none",     // none | scatter(隨機3~5年不連續) | rangeAround(隨機年份±1~2)
+            debutRuleType: "none",     // none | scatter(隨機3年不連續) | rangeAround(隨機年份±1)
+            nonKoreanRuleType: "none", // none | atLeastOne | onlyOne（房主直接指定）
+            groupRuleEnabled: false,   // 限制4：隨機3~10個團體不能選
+            groupCapRuleType: "none"   // 限制5：none | "1" | "2"，每個團體全場（不分玩家）最多可選人數
+        },
+        resolvedRules: null, // 開始選秀時才會產生的具體隨機結果，全房間共用同一份
         players: [{ id: clientId, name: hostName, team: [] }],
         idolPool: BASE_IDOLS,
         draftBoard: [],
-        finishedPlayerIds: [],
-        pendingPick: null
+        finishedPlayerIds: []
     };
     await roomRef(code).set(data);
     localStorage.setItem(LS_NAME, hostName);
@@ -327,6 +508,16 @@ async function shufflePlayers() {
     await roomRef(roomCode).update({ players: arr });
 }
 
+async function movePlayerOrder(playerId, direction) {
+    const idx = room.players.findIndex(p => p.id === playerId);
+    if (idx === -1) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= room.players.length) return;
+    const arr = room.players.slice();
+    [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+    await roomRef(roomCode).update({ players: arr });
+}
+
 async function removePlayer(id) {
     await roomRef(roomCode).update({ players: room.players.filter(p => p.id !== id) });
 }
@@ -345,11 +536,21 @@ function ensureCurrentRound(draftBoard, players, finishedIds, draftMode) {
     if (order.length === 0) return { draftBoard, done: true };
     return { draftBoard: draftBoard.concat([{ order, picks: {} }]), done: false };
 }
+// 支援「同時以多個團體活動」的偶像：group 欄位可寫成「A團/B團」，用這個函式拆出個別團名
+function idolGroups(idol) {
+    return String(idol.group || "").split("/").map(s => s.trim()).filter(Boolean);
+}
+
 function getCurrentPlayerId(draftBoard) {
     let last = draftBoard[draftBoard.length - 1];
     if (!last) return null;
     let pos = Object.keys(last.picks).length;
     return last.order[pos] ?? null;
+}
+function getTurnPosition(draftBoard) {
+    let last = draftBoard[draftBoard.length - 1];
+    if (!last) return null;
+    return { round: draftBoard.length, position: Object.keys(last.picks).length + 1 };
 }
 function applyPickToBoard(draftBoard, playerId, value) {
     let copy = draftBoard.map(r => ({ order: r.order, picks: { ...r.picks } }));
@@ -357,47 +558,131 @@ function applyPickToBoard(draftBoard, playerId, value) {
     return copy;
 }
 
+function isRevealActive() {
+    return !!(room && room.lastReveal && room.lastReveal.until && Date.now() < room.lastReveal.until);
+}
+
+function sampleRandom(arr, k) {
+    const copy = arr.slice();
+    for (let i = copy.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[copy[i], copy[j]] = [copy[j], copy[i]]; }
+    return copy.slice(0, Math.max(0, k));
+}
+
+function resolveRules(settings, idolPool) {
+    const birthYears = idolPool.map(i => parseInt(i.birthYear)).filter(y => !isNaN(y));
+    const debutYears = idolPool.map(i => parseInt(i.debutYear)).filter(y => !isNaN(y));
+    const groups = Array.from(new Set(idolPool.flatMap(i => idolGroups(i))));
+
+    let bannedBirthYears = [];
+    if (birthYears.length) {
+        const minY = Math.min(...birthYears), maxY = Math.max(...birthYears);
+        const allYears = []; for (let y = minY; y <= maxY; y++) allYears.push(y);
+        if (settings.birthRuleType === "scatter") {
+            const count = Math.min(allYears.length, 3 + Math.floor(Math.random() * 3)); // 3~5
+            bannedBirthYears = sampleRandom(allYears, count);
+        } else if (settings.birthRuleType === "rangeAround") {
+            const base = minY + Math.floor(Math.random() * (maxY - minY + 1));
+            const lowOffset = 1 + Math.floor(Math.random() * 2);  // 1~2
+            const highOffset = 1 + Math.floor(Math.random() * 2); // 1~2
+            for (let y = base - lowOffset; y <= base + highOffset; y++) bannedBirthYears.push(y);
+        }
+    }
+
+    let bannedDebutYears = [];
+    if (debutYears.length) {
+        const minY = Math.min(...debutYears), maxY = Math.max(...debutYears);
+        const allYears = []; for (let y = minY; y <= maxY; y++) allYears.push(y);
+        if (settings.debutRuleType === "scatter") {
+            const count = Math.min(allYears.length, 3); // 隨機3年
+            bannedDebutYears = sampleRandom(allYears, count);
+        } else if (settings.debutRuleType === "rangeAround") {
+            const base = minY + Math.floor(Math.random() * (maxY - minY + 1));
+            for (let y = base - 1; y <= base + 1; y++) bannedDebutYears.push(y); // 固定 ±1
+        }
+    }
+
+    let bannedGroups = [];
+    if (settings.groupRuleEnabled && groups.length) {
+        const count = Math.min(groups.length, 3 + Math.floor(Math.random() * 8)); // 3~10
+        bannedGroups = sampleRandom(groups, count);
+    }
+
+    return {
+        bannedBirthYears: bannedBirthYears.sort((a, b) => a - b),
+        bannedDebutYears: bannedDebutYears.sort((a, b) => a - b),
+        bannedGroups
+    };
+}
+
 async function startGame() {
     let { draftBoard, done } = ensureCurrentRound([], room.players, [], room.settings.draftMode);
     if (done) { alert("沒有玩家可以開始遊戲"); return; }
-    await roomRef(roomCode).update({ status: "playing", draftBoard, finishedPlayerIds: [] });
+    const resolvedRules = resolveRules(room.settings, room.idolPool);
+    await roomRef(roomCode).update({ status: "playing", draftBoard, finishedPlayerIds: [], resolvedRules });
 }
 
-async function pickIdol(idol) {
+function pickIdol(idol) {
     if (getCurrentPlayerId(room.draftBoard) !== clientId) return;
-    if (room.pendingPick) return;
-    await roomRef(roomCode).update({ pendingPick: { idol } });
+    if (isRevealActive()) return;
+    if (localPendingPick) return;
+    if (isIdolTaken(idol)) return;
+    if (isRestrictedByRules(idol)) return;
+    if (isBlockedForPlayer(idol, clientId)) return;
+    if (isGroupCapReached(idol)) return;
+    localPendingPick = idol;
+    render();
 }
 
 async function confirmPick() {
-    await db.runTransaction(async t => {
-        const ref = roomRef(roomCode);
-        const snap = await t.get(ref);
-        const r = snap.data();
-        if (getCurrentPlayerId(r.draftBoard) !== clientId || !r.pendingPick) return;
-        const idol = r.pendingPick.idol;
-        let players = r.players.map(p => p.id === clientId ? { ...p, team: p.team.concat([idol]) } : p);
-        let idolPool = r.idolPool.filter(i => !(i.name === idol.name && i.group === idol.group));
-        let draftBoard = applyPickToBoard(r.draftBoard, clientId, `${idol.name} (${idol.group})`);
-        let ensured = ensureCurrentRound(draftBoard, players, r.finishedPlayerIds, r.settings.draftMode);
-        let status = ensured.done ? "finished" : "playing";
-        t.update(ref, { players, idolPool, draftBoard: ensured.draftBoard, pendingPick: null, status });
-    });
-}
-
-async function cancelPick() {
-    if (getCurrentPlayerId(room.draftBoard) !== clientId) return;
-    await roomRef(roomCode).update({ pendingPick: null });
-}
-
-async function finishTurn() {
+    if (!localPendingPick) return;
+    if (isRevealActive()) return;
+    const idol = localPendingPick;
+    localPendingPick = null;
     await db.runTransaction(async t => {
         const ref = roomRef(roomCode);
         const snap = await t.get(ref);
         const r = snap.data();
         if (getCurrentPlayerId(r.draftBoard) !== clientId) return;
+        if (r.lastReveal && r.lastReveal.until && Date.now() < r.lastReveal.until) return;
+        if (r.players.some(p => p.team.some(x => x.name === idol.name && x.group === idol.group))) return;
+        if (r.settings.groupCapRuleType && r.settings.groupCapRuleType !== "none") {
+            const cap = parseInt(r.settings.groupCapRuleType);
+            const counts = groupPickCounts(r.players);
+            const myGroups = idolGroups(idol);
+            if (myGroups.some(g => (counts[g] || 0) >= cap)) return;
+        }
+        const me = r.players.find(p => p.id === clientId);
+        let players = r.players.map(p => p.id === clientId ? { ...p, team: p.team.concat([idol]) } : p);
+        let draftBoard = applyPickToBoard(r.draftBoard, clientId, `${idol.name} (${idol.group})`);
+        let ensured = ensureCurrentRound(draftBoard, players, r.finishedPlayerIds, r.settings.draftMode);
+        let status = ensured.done ? "finished" : "playing";
+        let lastReveal = {
+            playerName: me ? me.name : "",
+            idolName: idol.name,
+            idolGroup: idol.group,
+            until: Date.now() + 3000
+        };
+        t.update(ref, { players, draftBoard: ensured.draftBoard, status, lastReveal });
+    });
+    render();
+}
+
+function cancelPick() {
+    localPendingPick = null;
+    render();
+}
+
+async function finishTurn() {
+    if (isRevealActive()) return;
+    await db.runTransaction(async t => {
+        const ref = roomRef(roomCode);
+        const snap = await t.get(ref);
+        const r = snap.data();
+        if (getCurrentPlayerId(r.draftBoard) !== clientId) return;
+        if (r.lastReveal && r.lastReveal.until && Date.now() < r.lastReveal.until) return;
         const me = r.players.find(p => p.id === clientId);
         if (me.team.length < r.settings.minRounds) return;
+        if (!nonKoreanRequirementSatisfied(me, r)) return;
         let finishedPlayerIds = r.finishedPlayerIds.concat([clientId]);
         let draftBoard = applyPickToBoard(r.draftBoard, clientId, "FINISHED");
         let ensured = ensureCurrentRound(draftBoard, r.players, finishedPlayerIds, r.settings.draftMode);
@@ -406,32 +691,78 @@ async function finishTurn() {
     });
 }
 
-// ==================== 轉盤 ====================
-function eligibleForWheel() {
-    const ex = room.settings.wheelExcludedGroups || [];
-    const names = (room.settings.wheelExcludedNames || "").split(",").map(s => s.trim()).filter(Boolean);
-    return room.idolPool.filter(i => !ex.includes(i.group) && !names.includes(i.name));
+// ==================== 限制規則 ====================
+function isPureKorean(idol) {
+    const n = (idol.nationality || "").trim();
+    // 空白視為未填寫資料，暫時當作「純韓籍」以避免規則失效（房主應盡量補上國籍資料）
+    return n === "" || n === "韓國" || n === "韓國籍" || n === "Korea" || n === "Korean" || n === "한국";
 }
 
-function spinWheel() {
-    if (wheelAnimating) return;
-    const pool = eligibleForWheel();
-    if (pool.length === 0) { alert("轉盤中沒有可選擇的偶像（可能都被房主排除了）"); return; }
-    wheelAnimating = true;
-    const resultEl = document.getElementById("wheelResult");
-    let ticks = 0; const maxTicks = 22 + Math.floor(Math.random() * 10);
-    const timer = setInterval(() => {
-        ticks++;
-        const pick = pool[Math.floor(Math.random() * pool.length)];
-        if (resultEl) resultEl.textContent = `${pick.name} (${pick.group})`;
-        if (ticks >= maxTicks) {
-            clearInterval(timer);
-            wheelAnimating = false;
-            const finalPick = pool[Math.floor(Math.random() * pool.length)];
-            if (resultEl) resultEl.textContent = `🎉 ${finalPick.name} (${finalPick.group})`;
-            pickIdol(finalPick);
-        }
-    }, 90);
+// 全域限制：限制1(出生年) ＋ 限制2(出道年) ＋ 限制4(隨機團體)
+// 具體結果在開始選秀時就已經隨機決定好（存在 room.resolvedRules），全場玩家共用同一份結果
+function isRestrictedByRules(idol) {
+    const rr = room.resolvedRules || { bannedBirthYears: [], bannedDebutYears: [], bannedGroups: [] };
+    const by = parseInt(idol.birthYear);
+    if (!isNaN(by) && rr.bannedBirthYears.includes(by)) return true;
+    const dy = parseInt(idol.debutYear);
+    if (!isNaN(dy) && rr.bannedDebutYears.includes(dy)) return true;
+    const myGroups = idolGroups(idol);
+    if (myGroups.some(g => rr.bannedGroups.includes(g))) return true;
+
+    return false;
+}
+
+function isIdolTaken(idol) {
+    return room.players.some(p => p.team.some(t => t.name === idol.name && t.group === idol.group));
+}
+
+// 限制5：每個團體「全場」（不分玩家，所有人加總）最多可選 1 或 2 位；雙團體成員被選走時，所屬的每個團體都各自算一次
+function groupPickCounts(players) {
+    const counts = {};
+    players.forEach(p => p.team.forEach(picked => {
+        idolGroups(picked).forEach(g => { counts[g] = (counts[g] || 0) + 1; });
+    }));
+    return counts;
+}
+function isGroupCapReached(idol) {
+    const s = room.settings;
+    if (!s.groupCapRuleType || s.groupCapRuleType === "none") return false;
+    const cap = parseInt(s.groupCapRuleType);
+    const counts = groupPickCounts(room.players);
+    const myGroups = idolGroups(idol);
+    return myGroups.some(g => (counts[g] || 0) >= cap);
+}
+
+// 限制3・「只能一位非純韓籍」模式：這位玩家一旦選過1位非純韓籍成員，之後其餘非純韓籍成員這場都不能再選（只影響他自己）
+function isBlockedForPlayer(idol, playerId) {
+    if (room.settings.nonKoreanRuleType !== "onlyOne") return false;
+    if (isPureKorean(idol)) return false;
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) return false;
+    return player.team.some(i => !isPureKorean(i));
+}
+
+// 限制3・「至少一位非純韓籍」模式：結束指名前必須至少選過1位非純韓籍；除非選秀池已無非純韓籍成員可選了（含被其他限制排除的也算不能選）
+function nonKoreanRequirementSatisfied(player, r) {
+    r = r || room;
+    if (r.settings.nonKoreanRuleType !== "atLeastOne") return true;
+    if (player.team.some(i => !isPureKorean(i))) return true;
+    const takenKeys = new Set();
+    r.players.forEach(p => p.team.forEach(t => takenKeys.add(t.name + "|" + t.group)));
+    const rr = r.resolvedRules || { bannedBirthYears: [], bannedDebutYears: [], bannedGroups: [] };
+    const groupCounts = groupPickCounts(r.players);
+    const cap = r.settings.groupCapRuleType && r.settings.groupCapRuleType !== "none" ? parseInt(r.settings.groupCapRuleType) : null;
+    const remainingNonKorean = r.idolPool.some(i => {
+        if (isPureKorean(i)) return false;
+        if (takenKeys.has(i.name + "|" + i.group)) return false;
+        const by = parseInt(i.birthYear); if (!isNaN(by) && rr.bannedBirthYears.includes(by)) return false;
+        const dy = parseInt(i.debutYear); if (!isNaN(dy) && rr.bannedDebutYears.includes(dy)) return false;
+        const myGroups = idolGroups(i);
+        if (myGroups.some(g => rr.bannedGroups.includes(g))) return false;
+        if (cap !== null && myGroups.some(g => (groupCounts[g] || 0) >= cap)) return false;
+        return true;
+    });
+    return !remainingNonKorean; // 池裡已無非純韓籍可選 → 視為滿足（豁免）
 }
 
 // ==================== 畫面渲染 ====================
@@ -460,6 +791,16 @@ function render() {
     if (room.status === "lobby") { app.innerHTML = renderLobby(isHost); bindLobby(isHost); return; }
     app.innerHTML = renderGame(isHost);
     bindGame(isHost);
+    scheduleRevealRerender();
+}
+
+let revealTimerId = null;
+function scheduleRevealRerender() {
+    if (!room || !room.lastReveal || !room.lastReveal.until) return;
+    const msLeft = room.lastReveal.until - Date.now();
+    if (msLeft <= 0) return;
+    if (revealTimerId) clearTimeout(revealTimerId);
+    revealTimerId = setTimeout(() => { revealTimerId = null; render(); }, msLeft + 50);
 }
 
 function renderFirebaseSetup() {
@@ -548,7 +889,7 @@ function renderHome() {
         <h2>🏠 建立新房間</h2>
         <div class="field">
             <label>你的名字</label>
-            <input type="text" id="hostName" placeholder="房主暱稱" value="${localStorage.getItem(LS_NAME) || ""}">
+            <input type="text" id="hostName" placeholder="房主暱稱（限20字）" maxlength="20" value="${localStorage.getItem(LS_NAME) || ""}">
         </div>
         <div class="row"><button class="btn btn-primary btn-lg" id="createBtn">建立房間並取得邀請連結</button></div>
         <hr style="border-color:var(--line); margin:22px 0;">
@@ -557,12 +898,11 @@ function renderHome() {
             <input type="text" id="joinCodeInput" placeholder="輸入 6 位房號" style="text-transform:uppercase; width:160px;">
             <button class="btn btn-secondary" id="joinCodeBtn">加入房間</button>
         </div>
-        <div class="row"><button class="icon-btn" id="fbResetBtn">🔄 重新設定雲端連線</button></div>
     </div>`;
 }
 function bindHome() {
     document.getElementById("createBtn").onclick = async () => {
-        const name = document.getElementById("hostName").value.trim() || "房主";
+        const name = (document.getElementById("hostName").value.trim() || "房主").slice(0, 20);
         await createRoom(name);
     };
     document.getElementById("joinCodeBtn").onclick = () => {
@@ -573,9 +913,6 @@ function bindHome() {
         history.replaceState(null, "", url.toString());
         listenRoom(code);
     };
-    document.getElementById("fbResetBtn").onclick = () => {
-        if (confirm("要清除目前的雲端連線設定嗎？")) { localStorage.removeItem(LS_CONFIG); db = null; render(); }
-    };
 }
 
 function renderJoin() {
@@ -584,14 +921,14 @@ function renderJoin() {
         <h2>🎫 加入房間 <span class="code-box">${roomCode}</span></h2>
         <div class="field">
             <label>你的名字</label>
-            <input type="text" id="joinName" placeholder="輸入你的暱稱" value="${localStorage.getItem(LS_NAME) || ""}">
+            <input type="text" id="joinName" placeholder="輸入你的暱稱（限20字）" maxlength="20" value="${localStorage.getItem(LS_NAME) || ""}">
         </div>
         <div class="row"><button class="btn btn-primary btn-lg" id="joinBtn">加入遊戲</button></div>
     </div>`;
 }
 function bindJoin() {
     document.getElementById("joinBtn").onclick = async () => {
-        const name = document.getElementById("joinName").value.trim();
+        const name = document.getElementById("joinName").value.trim().slice(0, 20);
         if (!name) { alert("請輸入名字"); return; }
         try { await joinRoom(name); } catch (e) { alert(e.message); }
     };
@@ -602,6 +939,33 @@ function inviteUrl() {
     return url.toString();
 }
 
+function renderLobbyRulesPreview() {
+    const s = room.settings;
+    const items = [];
+
+    if (s.birthRuleType === "scatter") items.push("限制1・出生年份：隨機 3～5 年（不連續）不能選");
+    else if (s.birthRuleType === "rangeAround") items.push("限制1・出生年份：隨機一個年份及其正負1～2年不能選");
+
+    if (s.debutRuleType === "scatter") items.push("限制2・出道年份：隨機 3 年（不連續）不能選");
+    else if (s.debutRuleType === "rangeAround") items.push("限制2・出道年份：隨機一個年份及其正負1年不能選");
+
+    if (s.nonKoreanRuleType === "atLeastOne") items.push("限制3・國籍：每人至少要選 1 位非純韓籍成員才能結束指名");
+    else if (s.nonKoreanRuleType === "onlyOne") items.push("限制3・國籍：每人最多只能選 1 位非純韓籍成員，選過後其餘鎖住");
+
+    if (s.groupRuleEnabled) items.push("限制4・團體：隨機 3～10 個團體的成員不能選（含 SOLO）");
+
+    if (s.groupCapRuleType === "1") items.push("限制5・每團上限：全場（不分玩家）每個團體最多只能被選 1 位");
+    else if (s.groupCapRuleType === "2") items.push("限制5・每團上限：全場（不分玩家）每個團體最多只能被選 2 位");
+
+    return `<div class="panel">
+        <div class="rules-banner" style="margin:0;">
+            <h3>📢 本場限制規則</h3>
+            ${items.length ? `<ul>${items.map(i => `<li>${i}</li>`).join("")}</ul>` : `<div class="none">本場沒有開啟任何限制</div>`}
+            <p class="hint" style="margin-top:8px;">出生年／出道年／團體的具體隨機結果，會在按下「開始選秀」的當下才決定，屆時會在選秀畫面公告給所有人。</p>
+        </div>
+    </div>`;
+}
+
 function renderLobby(isHost) {
     let html = `<div class="panel">
         <h2>🛋️ 房間大廳 <span class="code-box">${roomCode}</span></h2>
@@ -609,9 +973,17 @@ function renderLobby(isHost) {
             <input type="text" readonly value="${inviteUrl()}" id="inviteLink">
             <button class="btn btn-secondary btn-sm" id="copyLinkBtn">📋 複製邀請連結</button>
         </div>
-        <h3>玩家（${room.players.length}）</h3>
-        <div>${room.players.map(p => `<span class="player-chip">${p.name}${p.id === room.hostId ? '<span class="badge badge-host">房主</span>' : ''}${isHost && p.id !== room.hostId ? ` <button class="icon-btn" data-remove="${p.id}">移除</button>` : ''}</span>`).join("")}</div>
+        <h3>玩家（${room.players.length}）／選秀順位</h3>
+        <div>${room.players.map((p, idx) => `<span class="player-chip">
+            <span class="badge">#${idx + 1}</span>
+            ${p.name}${p.id === room.hostId ? '<span class="badge badge-host">房主</span>' : ''}
+            ${isHost ? `<button class="icon-btn" data-moveup="${p.id}" ${idx === 0 ? "disabled" : ""}>▲</button><button class="icon-btn" data-movedown="${p.id}" ${idx === room.players.length - 1 ? "disabled" : ""}>▼</button>` : ""}
+            ${isHost && p.id !== room.hostId ? `<button class="icon-btn" data-remove="${p.id}">移除</button>` : ""}
+        </span>`).join("")}</div>
+        ${isHost ? `<p class="hint" style="margin-top:6px;">上方順序就是選秀順位，可用 ▲▼ 手動調整，或按下方「隨機排序玩家」讓系統隨機決定。</p>` : ""}
     </div>`;
+
+    html += renderLobbyRulesPreview();
 
     if (isHost) {
         html += `
@@ -625,36 +997,75 @@ function renderLobby(isHost) {
                     </select>
                 </div>
                 <div class="field"><label>每人至少選幾人才能結束</label>
-                    <input type="number" id="minRoundsInput" min="1" max="20" value="${room.settings.minRounds}" style="width:90px">
+                    <input type="number" id="minRoundsInput" min="1" value="${room.settings.minRounds}" style="width:90px">
                 </div>
                 <div class="field"><label>&nbsp;</label><button class="btn btn-ghost btn-sm" id="shuffleBtn">🔀 隨機排序玩家</button></div>
             </div>
-            <label class="inline"><input type="checkbox" id="wheelEnabledChk" ${room.settings.wheelEnabled ? "checked" : ""}> 這場遊戲啟用「轉盤抽選」（啟用後玩家改用轉盤決定人選，不能直接手動點選）</label>
+            <div id="wheelSettingsBox" style="margin-top:18px;">
+                <h3>選秀限制規則</h3>
+                <p class="hint">以下 4 項限制皆可獨立開關；全部設為「不限制」＝這場沒有任何限制。具體隨機到哪些年份／團體，會在按下「開始選秀」的當下才決定，並公告給所有玩家。</p>
 
-            <div id="wheelSettingsBox" style="margin-top:14px; ${room.settings.wheelEnabled ? "" : "display:none"}">
-                <h3>轉盤排除設定</h3>
-                <p class="hint">被勾選的團體 / 逗號分隔的個人名字，將不會出現在轉盤選項中。</p>
-                <div class="row" id="groupExcludeBox">${allGroups().map(g => `<label class="inline"><input type="checkbox" class="grpEx" value="${g}" ${room.settings.wheelExcludedGroups.includes(g) ? "checked" : ""}> ${g}</label>`).join("")}</div>
-                <div class="field" style="margin-top:8px;">
-                    <label>額外排除特定成員（用逗號分隔）</label>
-                    <input type="text" id="excludeNamesInput" value="${room.settings.wheelExcludedNames || ""}" placeholder="例如：Wonyoung, Karina">
+                <div class="field" style="margin-top:10px;">
+                    <label><b>限制 1：出生年份</b></label>
+                    <select id="birthRuleType">
+                        <option value="none" ${room.settings.birthRuleType === "none" ? "selected" : ""}>不限制</option>
+                        <option value="scatter" ${room.settings.birthRuleType === "scatter" ? "selected" : ""}>隨機 3～5 年（不一定連續）不能選</option>
+                        <option value="rangeAround" ${room.settings.birthRuleType === "rangeAround" ? "selected" : ""}>隨機一個年份及其正負1～2年不能選</option>
+                    </select>
                 </div>
-                <div class="row"><button class="btn btn-secondary btn-sm" id="saveWheelSettingsBtn">儲存轉盤設定</button></div>
+
+                <div class="field" style="margin-top:14px;">
+                    <label><b>限制 2：出道年份</b></label>
+                    <select id="debutRuleType">
+                        <option value="none" ${room.settings.debutRuleType === "none" ? "selected" : ""}>不限制</option>
+                        <option value="scatter" ${room.settings.debutRuleType === "scatter" ? "selected" : ""}>隨機 3 年（不一定連續）不能選</option>
+                        <option value="rangeAround" ${room.settings.debutRuleType === "rangeAround" ? "selected" : ""}>隨機一個年份及其正負1年不能選</option>
+                    </select>
+                </div>
+                <p class="hint" style="margin-top:4px;">限制1、2 的年份範圍會以偶像資料庫中已填寫的出生年／出道年之最早～最晚年份為準。</p>
+
+                <div style="margin-top:14px;">
+                    <label class="inline"><input type="checkbox" id="nonKoreanEnabledChk" ${room.settings.nonKoreanRuleType !== "none" ? "checked" : ""}> <b>限制 3：國籍</b>（啟用後從下面二選一）</label>
+                </div>
+                <div class="row" id="nonKoreanModeBox" style="margin-top:6px; ${room.settings.nonKoreanRuleType !== "none" ? "" : "display:none"}">
+                    <select id="nonKoreanRuleTypeSel">
+                        <option value="atLeastOne" ${room.settings.nonKoreanRuleType === "atLeastOne" ? "selected" : ""}>至少要選 1 位非純韓籍成員才能結束指名</option>
+                        <option value="onlyOne" ${room.settings.nonKoreanRuleType === "onlyOne" ? "selected" : ""}>只能選 1 位非純韓籍成員（選過後其餘非純韓籍鎖住不能再選）</option>
+                    </select>
+                </div>
+
+                <div style="margin-top:14px;">
+                    <label class="inline"><input type="checkbox" id="groupRuleEnabledChk" ${room.settings.groupRuleEnabled ? "checked" : ""}>
+                    <b>限制 4：</b>隨機 3～10 個團體的成員不能選（若抽到 SOLO，代表所有 solo 歌手都不能選）</label>
+                </div>
+
+                <div class="field" style="margin-top:14px;">
+                    <label><b>限制 5：每團全場最多可選人數</b></label>
+                    <select id="groupCapRuleType">
+                        <option value="none" ${room.settings.groupCapRuleType === "none" ? "selected" : ""}>不限制</option>
+                        <option value="1" ${room.settings.groupCapRuleType === "1" ? "selected" : ""}>每個團體全場最多只能選 1 位（不分玩家，加總計算）</option>
+                        <option value="2" ${room.settings.groupCapRuleType === "2" ? "selected" : ""}>每個團體全場最多只能選 2 位（不分玩家，加總計算）</option>
+                    </select>
+                    <p class="hint" style="margin-top:4px;">若某成員同時屬於兩個團體，被選走時這兩個團體的名額都會各自算一次。</p>
+                </div>
+
+                <div class="row" style="margin-top:12px;"><button class="btn btn-secondary btn-sm" id="saveWheelRulesBtn">儲存限制規則設定</button></div>
             </div>
 
-            <h3 style="margin-top:22px;">📚 偶像資料庫（名字 / 團體 / 出生年 / 出道年）</h3>
-            <p class="hint">出生年、出道年由你自行填寫或用下方批次匯入。留空不影響遊戲，只是額外資訊欄位。</p>
+            <h3 style="margin-top:22px;">📚 偶像資料庫（名字 / 團體 / 出生年 / 出道年 / 國籍）</h3>
+            <p class="hint">出生年、出道年、國籍由你自行填寫或用下方批次匯入。留空不影響一般遊戲，但會影響限制1/2/3是否能正確判定。國籍請填「韓國」代表純韓籍，其餘（如日本、中國、泰國等）視為非純韓籍。若某成員同時以兩個團體活動，團體欄位請填「A團/B團」（例如 IVE/tripleS），該成員會同時出現在兩個團的選秀池分類底下；若限制4隨機抽中其中一團，這個人整個都不能選。</p>
             ${renderIdolEditorTable()}
             <div class="row" style="margin-top:10px;">
-                <input type="text" id="newIdolName" placeholder="姓名" style="width:130px">
-                <input type="text" id="newIdolGroup" placeholder="團體" style="width:130px">
-                <input type="text" id="newIdolBirth" placeholder="出生年" style="width:90px">
-                <input type="text" id="newIdolDebut" placeholder="出道年" style="width:90px">
+                <input type="text" id="newIdolName" placeholder="姓名" style="width:120px">
+                <input type="text" id="newIdolGroup" placeholder="團體" style="width:120px">
+                <input type="text" id="newIdolBirth" placeholder="出生年" style="width:80px">
+                <input type="text" id="newIdolDebut" placeholder="出道年" style="width:80px">
+                <input type="text" id="newIdolNationality" placeholder="國籍" style="width:80px">
                 <button class="btn btn-secondary btn-sm" id="addIdolBtn">➕ 新增偶像</button>
             </div>
             <details style="margin-top:14px;">
-                <summary style="cursor:pointer; color:#ccc;">批次匯入（CSV：姓名,團體,出生年,出道年，一行一筆）</summary>
-                <textarea id="csvImport" rows="5" placeholder="Wonyoung,IVE,2004,2021"></textarea>
+                <summary style="cursor:pointer; color:#ccc;">批次匯入（CSV：姓名,團體,出生年,出道年,國籍，一行一筆）</summary>
+                <textarea id="csvImport" rows="5" placeholder="Wonyoung,IVE,2004,2021,韓國"></textarea>
                 <div class="row"><button class="btn btn-secondary btn-sm" id="csvImportBtn">匯入 / 更新</button></div>
             </details>
 
@@ -663,14 +1074,9 @@ function renderLobby(isHost) {
             </div>
         </div>`;
     } else {
-        html += `<div class="panel"><p class="hint">等待房主設定並開始遊戲…</p></div>`;
+        html += `<div class="panel"><p class="hint">等待房主設定並開始遊戲…（本場限制規則可在上方查看）</p></div>`;
     }
     return html;
-}
-
-function allGroups() {
-    const set = new Set(room.idolPool.map(i => i.group));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
 
 function renderIdolEditorTable() {
@@ -680,10 +1086,11 @@ function renderIdolEditorTable() {
             <td>${i.group}</td>
             <td><input type="text" data-idx="${idx}" data-field="birthYear" value="${i.birthYear || ""}"></td>
             <td><input type="text" data-idx="${idx}" data-field="debutYear" value="${i.debutYear || ""}"></td>
+            <td><input type="text" data-idx="${idx}" data-field="nationality" value="${i.nationality || ""}"></td>
             <td><button class="icon-btn" data-delidol="${idx}">刪除</button></td>
         </tr>`).join("");
     return `<div style="max-height:340px; overflow:auto;">
-        <table class="editor"><tr><th>名字</th><th>團體</th><th>出生年</th><th>出道年</th><th></th></tr>${rows}</table>
+        <table class="editor"><tr><th>名字</th><th>團體</th><th>出生年</th><th>出道年</th><th>國籍</th><th></th></tr>${rows}</table>
     </div>
     <div class="row" style="margin-top:8px;"><button class="btn btn-secondary btn-sm" id="saveIdolTableBtn">💾 儲存資料庫變更</button></div>`;
 }
@@ -693,16 +1100,26 @@ function bindLobby(isHost) {
         navigator.clipboard?.writeText(inviteUrl()).then(() => alert("已複製邀請連結！")).catch(() => prompt("複製這個連結：", inviteUrl()));
     };
     document.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => removePlayer(b.dataset.remove));
+    document.querySelectorAll("[data-moveup]").forEach(b => b.onclick = () => movePlayerOrder(b.dataset.moveup, -1));
+    document.querySelectorAll("[data-movedown]").forEach(b => b.onclick = () => movePlayerOrder(b.dataset.movedown, 1));
     if (!isHost) return;
 
     document.getElementById("shuffleBtn").onclick = shufflePlayers;
     document.getElementById("draftModeSel").onchange = e => updateSettings({ draftMode: e.target.value });
     document.getElementById("minRoundsInput").onchange = e => updateSettings({ minRounds: Math.max(1, parseInt(e.target.value) || 1) });
-    document.getElementById("wheelEnabledChk").onchange = e => updateSettings({ wheelEnabled: e.target.checked });
-    document.getElementById("saveWheelSettingsBtn")?.addEventListener("click", () => {
-        const groups = Array.from(document.querySelectorAll(".grpEx:checked")).map(c => c.value);
-        const names = document.getElementById("excludeNamesInput").value;
-        updateSettings({ wheelExcludedGroups: groups, wheelExcludedNames: names });
+    document.getElementById("nonKoreanEnabledChk")?.addEventListener("change", e => {
+        document.getElementById("nonKoreanModeBox").style.display = e.target.checked ? "" : "none";
+    });
+
+    document.getElementById("saveWheelRulesBtn")?.addEventListener("click", () => {
+        const nonKoreanEnabled = document.getElementById("nonKoreanEnabledChk").checked;
+        updateSettings({
+            birthRuleType: document.getElementById("birthRuleType").value,
+            debutRuleType: document.getElementById("debutRuleType").value,
+            nonKoreanRuleType: nonKoreanEnabled ? document.getElementById("nonKoreanRuleTypeSel").value : "none",
+            groupRuleEnabled: document.getElementById("groupRuleEnabledChk").checked,
+            groupCapRuleType: document.getElementById("groupCapRuleType").value
+        });
     });
 
     document.getElementById("saveIdolTableBtn").onclick = () => {
@@ -723,18 +1140,19 @@ function bindLobby(isHost) {
         if (!name || !group) { alert("請輸入姓名與團體"); return; }
         const birthYear = document.getElementById("newIdolBirth").value.trim();
         const debutYear = document.getElementById("newIdolDebut").value.trim();
-        saveIdolPool(room.idolPool.concat([{ name, group, birthYear, debutYear }]));
+        const nationality = document.getElementById("newIdolNationality").value.trim();
+        saveIdolPool(room.idolPool.concat([{ name, group, birthYear, debutYear, nationality }]));
     };
     document.getElementById("csvImportBtn").onclick = () => {
         const text = document.getElementById("csvImport").value.trim();
         if (!text) return;
         let pool = room.idolPool.map(i => ({ ...i }));
         text.split("\n").map(l => l.trim()).filter(Boolean).forEach(line => {
-            const [name, group, birthYear = "", debutYear = ""] = line.split(",").map(s => s.trim());
+            const [name, group, birthYear = "", debutYear = "", nationality = ""] = line.split(",").map(s => s.trim());
             if (!name || !group) return;
             const existing = pool.find(i => i.name === name && i.group === group);
-            if (existing) { existing.birthYear = birthYear; existing.debutYear = debutYear; }
-            else pool.push({ name, group, birthYear, debutYear });
+            if (existing) { existing.birthYear = birthYear; existing.debutYear = debutYear; existing.nationality = nationality; }
+            else pool.push({ name, group, birthYear, debutYear, nationality });
         });
         saveIdolPool(pool);
     };
@@ -747,39 +1165,92 @@ function renderGame(isHost) {
         <button class="btn btn-danger btn-sm" id="leaveBtn">🚪 ${isHost ? "退出（結束整場遊戲）" : "退出遊戲"}</button>
     </div>
     <h2 id="turnInfo" style="text-align:center; font-size:24px; min-height:40px;">${renderTurnInfo()}</h2>
+    ${renderRulesBanner()}
     <div class="container">
         <div id="idolPool">${renderIdolPoolHtml()}</div>
         <div id="draftArea">${renderDraftAreaHtml()}</div>
     </div>`;
 }
 
+function renderRulesBanner() {
+    const s = room.settings;
+    const rr = room.resolvedRules || { bannedBirthYears: [], bannedDebutYears: [], bannedGroups: [] };
+    const items = [];
+
+    if (s.birthRuleType !== "none") {
+        if (rr.bannedBirthYears.length) items.push(`🚫 出生年 <b>${rr.bannedBirthYears.join("、")}</b> 的成員不能選`);
+        else items.push(`🚫 出生年限制已開啟，但資料庫沒有可用的出生年資料`);
+    }
+    if (s.debutRuleType !== "none") {
+        if (rr.bannedDebutYears.length) items.push(`🚫 出道年 <b>${rr.bannedDebutYears.join("、")}</b> 的成員不能選`);
+        else items.push(`🚫 出道年限制已開啟，但資料庫沒有可用的出道年資料`);
+    }
+    if (s.groupRuleEnabled) {
+        if (rr.bannedGroups.length) {
+            const hasSolo = rr.bannedGroups.includes("SOLO");
+            items.push(`🚫 團體 <b>${rr.bannedGroups.join("、")}</b> 的成員不能選${hasSolo ? "（含所有 SOLO 歌手）" : ""}`);
+        } else {
+            items.push(`🚫 團體限制已開啟，但資料庫沒有可用的團體資料`);
+        }
+    }
+    if (s.nonKoreanRuleType === "atLeastOne") items.push(`🌏 每人至少要選 <b>1 位非純韓國籍</b>成員才能結束指名（除非選秀池已無非純韓籍成員可選）`);
+    else if (s.nonKoreanRuleType === "onlyOne") items.push(`🌏 每人<b>最多只能選 1 位</b>非純韓國籍成員，選過之後其餘非純韓籍成員這場都不能再選`);
+
+    if (s.groupCapRuleType === "1") items.push(`👥 每個團體全場（不分玩家）最多只能被選 <b>1 位</b>`);
+    else if (s.groupCapRuleType === "2") items.push(`👥 每個團體全場（不分玩家）最多只能被選 <b>2 位</b>`);
+
+    return `<div class="rules-banner">
+        <h3>📢 本場選秀限制</h3>
+        ${items.length ? `<ul>${items.map(i => `<li>${i}</li>`).join("")}</ul>` : `<div class="none">本場沒有開啟任何限制</div>`}
+    </div>`;
+}
+
 function renderTurnInfo() {
     if (room.status === "finished") return "🎉 所有玩家已結束指名！";
+    if (isRevealActive()) {
+        const rv = room.lastReveal;
+        return `🎉 <b>${rv.playerName}</b> 選擇了 <b>${rv.idolName} (${rv.idolGroup})</b>！`;
+    }
+    const pos = getTurnPosition(room.draftBoard);
     const curId = getCurrentPlayerId(room.draftBoard);
     const cur = room.players.find(p => p.id === curId);
-    return `第 ${room.draftBoard.length} 輪 - 目前輪到：<b>${cur ? cur.name : "—"}</b>${curId === clientId ? " (你)" : ""}`;
+    if (!pos || !cur) return "—";
+    return `${pos.round}-${pos.position}輪 <b>${cur.name}</b>選擇中...${curId === clientId ? "（你）" : ""}`;
+}
+
+function idolTooltip(idol) {
+    const b = idol.birthYear || "未知";
+    const d = idol.debutYear || "未知";
+    const n = idol.nationality || "未知";
+    return `出生年：${b}　出道年：${d}　國籍：${n}`;
 }
 
 function renderIdolPoolHtml() {
     let html = "<h2>🎤 偶像選秀池</h2>";
-    const wheelMode = room.settings.wheelEnabled;
-    const myTurn = getCurrentPlayerId(room.draftBoard) === clientId && room.status === "playing" && !room.pendingPick;
-    if (wheelMode) {
-        const excludedCount = room.idolPool.length - eligibleForWheel().length;
-        html += `<div class="wheel-wrap">
-            <div class="wheel-pointer">🔻</div>
-            <div id="wheelResult" class="wheel-result">準備轉動…</div>
-            <button class="btn btn-primary btn-lg" id="spinBtn" ${myTurn ? "" : "disabled"}>🎡 轉動轉盤</button>
-            <div class="hint">目前排除 ${excludedCount} 位偶像不會被抽到</div>
-        </div>`;
-    }
+    html += `<div class="row" style="margin-bottom:6px;">
+        <input type="text" id="idolSearchInput" placeholder="搜尋 名字(團名)，例如：Wonyoung(IVE)" value="${idolSearchQuery.replace(/"/g, "&quot;")}" style="flex:1; min-width:200px;">
+    </div>`;
+    const myTurn = getCurrentPlayerId(room.draftBoard) === clientId && room.status === "playing" && !localPendingPick && !isRevealActive();
+    const query = idolSearchQuery.trim().toLowerCase();
+    const filteredPool = query
+        ? room.idolPool.filter(i => `${i.name}(${i.group})`.toLowerCase().includes(query))
+        : room.idolPool;
     let groups = {};
-    room.idolPool.forEach(i => { (groups[i.group] ||= []).push(i); });
-    Object.keys(groups).sort((a, b) => a.localeCompare(b)).forEach(g => {
-        html += `<div class="group-section"><div class="group-title">${g} (${groups[g].length}人)</div>`;
-        groups[g].forEach(idol => {
-            const disabled = wheelMode || !myTurn;
-            html += `<button class="idol-btn" data-pick="${idol.name}|${idol.group}" ${disabled ? "disabled" : ""}>${idol.name}</button>`;
+    filteredPool.forEach(i => { idolGroups(i).forEach(g => { (groups[g] ||= []).push(i); }); });
+    const naturalCompare = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+    const groupKeys = Object.keys(groups).sort(naturalCompare);
+    if (groupKeys.length === 0) {
+        html += `<div class="hint">沒有符合搜尋條件的偶像</div>`;
+    }
+    groupKeys.forEach(g => {
+        const members = groups[g].slice().sort((a, b) => naturalCompare(a.name, b.name));
+        html += `<div class="group-section"><div class="group-title">${g} (${members.length}人)</div>`;
+        members.forEach(idol => {
+            const taken = isIdolTaken(idol);
+            const restricted = !taken && (isRestrictedByRules(idol) || isBlockedForPlayer(idol, clientId) || isGroupCapReached(idol));
+            const disabled = taken || restricted || !myTurn;
+            const cls = taken ? "taken" : (restricted ? "restricted" : "");
+            html += `<button class="idol-btn ${cls}" title="${idolTooltip(idol)}" data-pick="${idol.name}|${idol.group}" ${disabled ? "disabled" : ""}>${idol.name}</button>`;
         });
         html += `</div>`;
     });
@@ -790,27 +1261,44 @@ function renderDraftAreaHtml() {
     let html = "<h2>👥 選秀進行中</h2>";
     const curId = getCurrentPlayerId(room.draftBoard);
     const cur = room.players.find(p => p.id === curId);
-    const myTurn = curId === clientId;
+    const pos = getTurnPosition(room.draftBoard);
+    const reveal = isRevealActive();
+    const myTurn = curId === clientId && !reveal;
     html += `<div style="background:#25253a; padding:18px; border-radius:12px; margin-bottom:15px;">`;
-    html += `<h3>目前選擇：${cur ? cur.name : "—"}（第 ${room.draftBoard.length} 輪）</h3>`;
-    if (room.pendingPick && myTurn) {
-        html += `<div class="pending">已選擇：${room.pendingPick.idol.name} (${room.pendingPick.idol.group})<br><br>
-        <button class="btn btn-success btn-sm" id="confirmPickBtn">✅ 確定放入表格</button>
-        <button class="btn btn-danger btn-sm" id="cancelPickBtn">❌ 取消</button></div>`;
-    } else if (room.pendingPick) {
-        html += `<div class="pending">⏳ ${cur ? cur.name : "對方"} 選擇中…</div>`;
-    } else if (room.status === "playing") {
-        html += `<div style="color:#aaa;">${myTurn ? (room.settings.wheelEnabled ? "點擊左側「轉動轉盤」進行選擇" : "點擊左側偶像進行選擇") : "等待對方選擇中…"}</div>`;
+    if (reveal) {
+        const rv = room.lastReveal;
+        html += `<h3>🎉 ${rv.playerName} 選擇了 ${rv.idolName} (${rv.idolGroup})！</h3>`;
+        html += `<div style="color:#aaa;">即將進行下一位…</div>`;
+    } else {
+        html += `<h3>目前選擇：${cur ? cur.name : "—"}${pos ? `（${pos.round}-${pos.position}輪）` : ""}</h3>`;
+        if (localPendingPick && myTurn) {
+            html += `<div class="pending">已選擇：${localPendingPick.name} (${localPendingPick.group})<br><br>
+            <button class="btn btn-success btn-sm" id="confirmPickBtn">✅ 確定放入表格</button>
+            <button class="btn btn-danger btn-sm" id="cancelPickBtn">❌ 取消</button></div>`;
+        } else if (room.status === "playing") {
+            html += `<div style="color:#aaa;">${myTurn ? "點擊左側偶像進行選擇" : (pos && cur ? `${pos.round}-${pos.position}輪 ${cur.name}選擇中...` : "等待中…")}</div>`;
+        }
     }
     html += `</div>`;
-    if (room.status === "playing" && myTurn) {
+    if (room.status === "playing" && myTurn && !localPendingPick) {
         const me = room.players.find(p => p.id === clientId);
-        const canFinish = me.team.length >= room.settings.minRounds;
-        html += `<button class="btn btn-secondary" id="finishTurnBtn" ${canFinish ? "" : "disabled"}>
-        ${canFinish ? "✅ 結束我的指名" : `還需選 ${room.settings.minRounds - me.team.length} 人`}</button>`;
+        const hasEnoughPicks = me.team.length >= room.settings.minRounds;
+        const nonKoreanOk = nonKoreanRequirementSatisfied(me);
+        const canFinish = hasEnoughPicks && nonKoreanOk;
+        let label = "✅ 結束我的指名";
+        if (!hasEnoughPicks) label = `還需選 ${room.settings.minRounds - me.team.length} 人`;
+        else if (!nonKoreanOk) label = "還需選 1 位非純韓籍成員才能結束";
+        html += `<button class="btn btn-secondary" id="finishTurnBtn" ${canFinish ? "" : "disabled"}>${label}</button>`;
     }
     html += renderDraftBoardHtml();
     return html;
+}
+
+function findIdolByLabel(label) {
+    // label 格式："name (group)"
+    const m = /^(.*) \((.*)\)$/.exec(label);
+    if (!m) return null;
+    return room.idolPool.find(i => i.name === m[1] && i.group === m[2]) || null;
 }
 
 function renderDraftBoardHtml() {
@@ -822,7 +1310,10 @@ function renderDraftBoardHtml() {
         room.players.forEach(p => {
             const val = round.picks[p.id];
             if (val === "FINISHED") html += `<td class="finished-tag">已結束指名</td>`;
-            else if (val) html += `<td>${val}</td>`;
+            else if (val) {
+                const idol = findIdolByLabel(val);
+                html += idol ? `<td title="${idolTooltip(idol)}">${val}</td>` : `<td>${val}</td>`;
+            }
             else if (round.order.includes(p.id)) html += `<td>-</td>`;
             else html += `<td></td>`;
         });
@@ -838,17 +1329,28 @@ function bindGame(isHost) {
         const idol = room.idolPool.find(i => i.name === name && i.group === group);
         if (idol) pickIdol(idol);
     });
-    document.getElementById("spinBtn")?.addEventListener("click", spinWheel);
     document.getElementById("confirmPickBtn")?.addEventListener("click", confirmPick);
     document.getElementById("cancelPickBtn")?.addEventListener("click", cancelPick);
     document.getElementById("finishTurnBtn")?.addEventListener("click", finishTurn);
     document.getElementById("leaveBtn")?.addEventListener("click", leaveRoom);
+
+    const searchInput = document.getElementById("idolSearchInput");
+    if (searchInput) {
+        searchInput.addEventListener("input", e => { idolSearchQuery = e.target.value; render(); });
+        searchInput.addEventListener("focus", () => { idolSearchFocused = true; });
+        searchInput.addEventListener("blur", () => { idolSearchFocused = false; });
+        if (idolSearchFocused) {
+            searchInput.focus();
+            const len = searchInput.value.length;
+            searchInput.setSelectionRange(len, len);
+        }
+    }
 }
 
 // ==================== 退出房間 ====================
 function goHome() {
     if (unsub) { unsub(); unsub = null; }
-    room = null; roomCode = null;
+    room = null; roomCode = null; localPendingPick = null; idolSearchQuery = ""; idolSearchFocused = false;
     const url = new URL(location.href); url.searchParams.delete("room");
     history.replaceState(null, "", url.toString());
     render();
@@ -872,7 +1374,6 @@ async function leaveRoom() {
         const snap = await t.get(ref);
         if (!snap.exists) return;
         const r = snap.data();
-        const curIdBefore = getCurrentPlayerId(r.draftBoard);
 
         const players = r.players.filter(p => p.id !== clientId);
         const finishedPlayerIds = r.finishedPlayerIds.filter(id => id !== clientId);
@@ -891,9 +1392,7 @@ async function leaveRoom() {
             status = ensured.done ? "finished" : "playing";
         }
 
-        const pendingPick = curIdBefore === clientId ? null : r.pendingPick;
-
-        t.update(ref, { players, finishedPlayerIds, draftBoard, status, pendingPick });
+        t.update(ref, { players, finishedPlayerIds, draftBoard, status });
     });
     goHome();
 }
