@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -54,11 +55,15 @@ textarea { width: 100%; font-family: monospace; }
 .group-btn { background:#2a2a3a; border:1px solid var(--line); border-radius:10px; padding:7px 8px; cursor:pointer; color:#eee; font-size:12px; text-align:center; transition: all .12s; }
 .group-btn:hover { background:#33334a; }
 .group-btn.expanded { background: var(--primary); color:#1a0018; font-weight:700; }
-.member-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap:6px; margin: 6px 0 16px; padding: 10px; background:#1a1a28; border-radius:10px; }
+.group-btn.taken { background:#242430; border-color:#444; color:#666; text-decoration: line-through; }
+.group-btn.taken:hover { background:#242430; }
+.group-btn.restricted { background:#3a1220; border-color: var(--danger); color:#ff8fa3; }
+.group-btn.restricted:hover { background:#3a1220; }
+.member-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap:8px; margin: 6px 0 16px; padding: 10px; background:#1a1a28; border-radius:10px; }
 .idol-btn {
-    padding: 6px 6px; border-radius: 8px; border: none;
+    padding: 11px 8px; border-radius: 8px; border: none;
     background: #2a2a3a; color: white; cursor: pointer; transition: all .15s;
-    font-size: 12px; width: 100%;
+    font-size: 15px; font-weight: 600; width: 100%;
 }
 .idol-btn:hover:not(:disabled) { background: var(--primary); transform: scale(1.05); }
 .idol-btn:disabled { opacity: .35; cursor: not-allowed; }
@@ -116,12 +121,12 @@ table.editor input { width: 100%; padding: 6px 8px; font-size: 13px; }
 .rules-banner .none { color:#999; }
 
 /* 讓「輪到誰選擇」的文字更醒目：放大＋真正閃爍 */
-.turn-highlight { color: var(--primary); font-weight: 800; font-size: 1.3em; text-shadow: 0 0 10px rgba(255,105,180,.7); animation: turnBlink 1s steps(1) infinite; }
-@keyframes turnBlink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .25; } }
+.turn-highlight { color: var(--primary); font-weight: 800; font-size: 1.3em; text-shadow: 0 0 6px rgba(255,105,180,.4); animation: turnBlink 1s steps(1) infinite; }
+@keyframes turnBlink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .55; } }
 
 /* Draft Board：目前選擇中的格子閃爍，下一順位的格子顯示提示 */
-.cell-current { background: var(--primary); color:#1a0018; font-weight: 800; animation: cellBlink 1s steps(1) infinite; }
-@keyframes cellBlink { 0%, 49% { background: var(--primary); } 50%, 100% { background: var(--accent); } }
+.cell-current { background: rgba(255,105,180,.35); color:#fff; font-weight: 800; animation: cellBlink 1s steps(1) infinite; }
+@keyframes cellBlink { 0%, 49% { background: rgba(255,105,180,.35); } 50%, 100% { background: rgba(186,85,211,.25); } }
 .cell-next { color: var(--accent); font-style: italic; font-size: 12px; }
 
 .modal-backdrop { position: fixed; inset:0; background: rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:50; }
@@ -178,7 +183,7 @@ let unsub = null;
 let localPendingPick = null;  // 我正在考慮的選擇，純本地狀態，不會同步給其他玩家
 let idolSearchQuery = "";     // 選秀名單搜尋框的關鍵字，純本地狀態
 let idolSearchFocused = false; // 用來在重新渲染後恢復搜尋框的游標焦點
-let expandedGroups = new Set(); // 備選區目前展開的團體，純本地狀態
+let expandedGroup = null; // 備選區目前展開的團體（同時只會有一個），純本地狀態
 
 // ==================== 偶像預設資料 ====================
 const BASE_IDOLS = [
@@ -444,7 +449,7 @@ let roomClosedByHost = false;
 
 function listenRoom(code) {
     if (unsub) unsub();
-    everConnectedRoom = false; roomClosedByHost = false; localPendingPick = null; idolSearchQuery = ""; idolSearchFocused = false; expandedGroups = new Set();
+    everConnectedRoom = false; roomClosedByHost = false; localPendingPick = null; idolSearchQuery = ""; idolSearchFocused = false; expandedGroup = null;
     setConnStatus("", "⏳ 連接房間中…");
     unsub = roomRef(code).onSnapshot(snap => {
         if (!snap.exists) {
@@ -1321,13 +1326,19 @@ function renderIdolPoolHtml() {
 
     html += `<div class="group-grid">`;
     groupKeys.forEach(g => {
-        const isExpanded = forceExpand || expandedGroups.has(g);
-        html += `<button class="group-btn ${isExpanded ? "expanded" : ""}" data-togglegroup="${g}">${g} (${groups[g].length})</button>`;
+        const isExpanded = forceExpand || expandedGroup === g;
+        const members = groups[g];
+        const allTaken = members.every(idol => isIdolTaken(idol));
+        const allRestricted = !allTaken && members.every(idol =>
+            isRestrictedByRules(idol) || isBlockedForPlayer(idol, clientId) || isGroupCapReached(idol, clientId)
+        );
+        const stateCls = allTaken ? "taken" : (allRestricted ? "restricted" : "");
+        html += `<button class="group-btn ${isExpanded ? "expanded" : ""} ${stateCls}" data-togglegroup="${g}">${g} (${members.length})</button>`;
     });
     html += `</div>`;
 
     groupKeys.forEach(g => {
-        const isExpanded = forceExpand || expandedGroups.has(g);
+        const isExpanded = forceExpand || expandedGroup === g;
         if (!isExpanded) return;
         const members = groups[g].slice().sort((a, b) => naturalCompare(a.name, b.name));
         html += `<div class="member-grid">`;
@@ -1439,7 +1450,7 @@ function bindGame(isHost) {
     });
     document.querySelectorAll("[data-togglegroup]").forEach(b => b.onclick = () => {
         const g = b.dataset.togglegroup;
-        if (expandedGroups.has(g)) expandedGroups.delete(g); else expandedGroups.add(g);
+        if (expandedGroup === g) expandedGroup = null; else expandedGroup = g;
         render();
     });
     document.getElementById("confirmPickBtn")?.addEventListener("click", confirmPick);
@@ -1490,7 +1501,7 @@ function downloadDraftResults() {
 // ==================== 退出房間 ====================
 function goHome() {
     if (unsub) { unsub(); unsub = null; }
-    room = null; roomCode = null; localPendingPick = null; idolSearchQuery = ""; idolSearchFocused = false; expandedGroups = new Set();
+    room = null; roomCode = null; localPendingPick = null; idolSearchQuery = ""; idolSearchFocused = false; expandedGroup = null;
     const url = new URL(location.href); url.searchParams.delete("room");
     history.replaceState(null, "", url.toString());
     render();
