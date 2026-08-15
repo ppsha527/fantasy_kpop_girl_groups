@@ -1243,7 +1243,6 @@ function renderGame(isHost) {
         <button class="btn btn-danger btn-sm" id="leaveBtn">🚪 ${isHost ? "退出選秀（回到準備房間）" : "退出遊戲"}</button>
         <button class="btn btn-secondary btn-sm" id="downloadResultsBtn" ${finished ? "" : "disabled"} title="${finished ? "" : "選秀結束後才能下載"}">📥 下載選秀結果</button>
     </div>
-    <h2 id="turnInfo" style="text-align:center; font-size:24px; min-height:40px;">${renderTurnInfo()}</h2>
     ${renderRulesBanner()}
     <div class="container">
         <div id="draftArea">${renderDraftAreaHtml()}</div>
@@ -1282,19 +1281,6 @@ function renderRulesBanner() {
         <h3>📢 本場選秀限制</h3>
         ${items.length ? `<ul>${items.map(i => `<li>${i}</li>`).join("")}</ul>` : `<div class="none">本場沒有開啟任何限制</div>`}
     </div>`;
-}
-
-function renderTurnInfo() {
-    if (room.status === "finished") return "🎉 所有玩家已結束指名！";
-    if (isRevealActive()) {
-        const rv = room.lastReveal;
-        return `🎉 <span class="turn-highlight">${rv.playerName} 選擇了 ${rv.idolName} (${rv.idolGroup})</span>！`;
-    }
-    const pos = getTurnPosition(room.draftBoard);
-    const curId = getCurrentPlayerId(room.draftBoard);
-    const cur = room.players.find(p => p.id === curId);
-    if (!pos || !cur) return "—";
-    return `${pos.round}-${pos.position}輪 <span class="turn-highlight">${cur.name} 選擇中...</span>${curId === clientId ? "（你）" : ""}`;
 }
 
 function idolTooltip(idol) {
@@ -1362,18 +1348,21 @@ function renderDraftAreaHtml() {
     const reveal = isRevealActive();
     const myTurn = curId === clientId && !reveal;
     html += `<div style="background:#25253a; padding:18px; border-radius:12px; margin-bottom:15px;">`;
-    if (reveal) {
+    if (room.status === "finished") {
+        html += `<h3><span class="turn-highlight">🎉 所有玩家已結束指名！</span></h3>`;
+    } else if (reveal) {
         const rv = room.lastReveal;
         html += `<h3><span class="turn-highlight">🎉 ${rv.playerName} 選擇了 ${rv.idolName} (${rv.idolGroup})！</span></h3>`;
         html += `<div style="color:#aaa;">即將進行下一位…</div>`;
     } else {
-        html += `<h3>目前選擇：<span class="turn-highlight">${cur ? cur.name : "—"}</span>${pos ? `（${pos.round}-${pos.position}輪）` : ""}</h3>`;
+        const roundLabel = pos ? `${pos.round}-${pos.position}輪 ` : "";
+        html += `<h3>本輪選擇：<span class="turn-highlight">${roundLabel}${cur ? cur.name : "—"} 選擇中...</span>${curId === clientId ? "（你）" : ""}</h3>`;
         if (localPendingPick && myTurn) {
             html += `<div class="pending">已選擇：${localPendingPick.name} (${localPendingPick.group})<br><br>
             <button class="btn btn-success btn-sm" id="confirmPickBtn">✅ 確定放入表格</button>
             <button class="btn btn-danger btn-sm" id="cancelPickBtn">❌ 取消</button></div>`;
-        } else if (room.status === "playing") {
-            html += `<div style="font-size:1.05em;">${myTurn ? "點擊下方偶像進行選擇" : (pos && cur ? `${pos.round}-${pos.position}輪 <span class="turn-highlight">${cur.name} 選擇中...</span>` : "等待中…")}</div>`;
+        } else if (myTurn) {
+            html += `<div style="font-size:1.05em;">點擊下方偶像進行選擇</div>`;
         }
     }
     html += `</div>`;
