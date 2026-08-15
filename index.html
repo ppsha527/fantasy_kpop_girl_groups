@@ -59,7 +59,7 @@ textarea { width: 100%; font-family: monospace; }
 .group-btn.taken:hover { background:#242430; }
 .group-btn.restricted { background:#3a1220; border-color: var(--danger); color:#ff8fa3; }
 .group-btn.restricted:hover { background:#3a1220; }
-.member-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap:8px; margin: 6px 0 16px; padding: 10px; background:#1a1a28; border-radius:10px; }
+.member-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap:8px; margin: 14px 0 16px; padding: 10px; background:#1a1a28; border-radius:10px; }
 .idol-btn {
     padding: 11px 8px; border-radius: 8px; border: none;
     background: #2a2a3a; color: white; cursor: pointer; transition: all .15s;
@@ -99,6 +99,7 @@ textarea { width: 100%; font-family: monospace; }
 table { width: 100%; border-collapse: collapse; background: var(--panel-2); border-radius: 12px; overflow: hidden; margin-top: 15px; table-layout: fixed; }
 th, td { padding: 14px 8px; text-align: center; border: 1px solid #444; word-break: break-all; font-size: 14px; }
 th { background: #2a2a3a; color: var(--accent); font-size: 15px; }
+th.player-th { color: #fff; }
 tr:nth-child(even) { background: #202030; }
 tr:hover { background: #2a2a40; }
 table.editor td { padding: 6px; }
@@ -1392,10 +1393,21 @@ function renderDraftBoardHtml() {
     const curId = getCurrentPlayerId(room.draftBoard);
     const reveal = isRevealActive();
     const lastRoundIdx = room.draftBoard.length - 1;
+    const isActive = room.status === "playing" && !reveal;
     let nextPlayerId = null;
-    if (pos && lastRoundIdx >= 0) {
+    let previewNextOrder = null; // 若目前選擇者是本輪最後一位，預先算出下一輪的順序，讓「下一順位」可以顯示在新的一列
+    if (pos && lastRoundIdx >= 0 && isActive) {
         const lastRound = room.draftBoard[lastRoundIdx];
-        nextPlayerId = lastRound.order[pos.position] || null; // pos.position 是1-indexed，剛好是陣列中下一位的0-indexed位置
+        if (pos.position < lastRound.order.length) {
+            nextPlayerId = lastRound.order[pos.position] || null; // pos.position 是1-indexed，剛好是陣列中下一位的0-indexed位置
+        } else {
+            // 目前選擇者是本輪最後一位，預先計算下一輪的順序（尚未真正寫入資料庫）
+            const nextOrder = computeActiveOrder(room.players, room.finishedPlayerIds, room.draftBoard.length, room.settings.draftMode);
+            if (nextOrder.length > 0) {
+                previewNextOrder = nextOrder;
+                nextPlayerId = nextOrder[0];
+            }
+        }
     }
 
     const playerCount = room.players.length;
@@ -1407,14 +1419,14 @@ function renderDraftBoardHtml() {
     <div style="overflow-x:auto;">
     <table style="width:auto; max-width:${tableMaxWidth}px; min-width:100%; font-size:${fontPx}px;">
     <tr><th style="width:60px;">輪次</th>`;
-    room.players.forEach(p => html += `<th style="width:${colWidthPx}px;">${p.name}</th>`);
+    room.players.forEach(p => html += `<th class="player-th" style="width:${colWidthPx}px;">${p.name}</th>`);
     html += `</tr>`;
     room.draftBoard.forEach((round, roundIdx) => {
         html += `<tr><td><b>${roundIdx + 1}</b></td>`;
         room.players.forEach(p => {
             const val = round.picks[p.id];
-            const isCurrentCell = room.status === "playing" && !reveal && roundIdx === lastRoundIdx && p.id === curId;
-            const isNextCell = room.status === "playing" && !reveal && roundIdx === lastRoundIdx && p.id === nextPlayerId && !val;
+            const isCurrentCell = isActive && roundIdx === lastRoundIdx && p.id === curId;
+            const isNextCell = isActive && roundIdx === lastRoundIdx && p.id === nextPlayerId && !val && !isCurrentCell;
             if (val === "FINISHED") html += `<td class="finished-tag">已結束指名</td>`;
             else if (val) {
                 const idol = findIdolByLabel(val);
@@ -1427,6 +1439,15 @@ function renderDraftBoardHtml() {
         });
         html += `</tr>`;
     });
+    if (previewNextOrder) {
+        html += `<tr><td><b>${room.draftBoard.length + 1}</b></td>`;
+        room.players.forEach(p => {
+            if (p.id === previewNextOrder[0]) html += `<td class="cell-next">下一順位</td>`;
+            else if (previewNextOrder.includes(p.id)) html += `<td>-</td>`;
+            else html += `<td></td>`;
+        });
+        html += `</tr>`;
+    }
     html += `</table></div>`;
     return html;
 }
