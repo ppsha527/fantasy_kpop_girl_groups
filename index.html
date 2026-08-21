@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KPOP IDOL DRAFT 選秀</title>
+<title>FANTASY KPOP GIRL GROUPS</title>
 <style>
 :root {
     --primary: #ff69b4;
@@ -52,7 +52,7 @@ textarea { width: 100%; font-family: monospace; }
 
 /* 備選區：團體/成員行列式（網格）排列 */
 .group-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap:8px; margin-bottom: 6px; }
-.group-btn { background:#2a2a3a; border:1px solid var(--line); border-radius:10px; padding:7px 8px; cursor:pointer; color:#eee; font-size:12px; text-align:center; transition: all .12s; }
+.group-btn { background:#2a2a3a; border:1px solid var(--line); border-radius:10px; padding:7px 8px; cursor:pointer; color:#eee; font-size:15px; font-weight:700; text-align:center; transition: all .12s; overflow-wrap: break-word; word-break: break-word; }
 .group-btn:hover { background:#33334a; }
 .group-btn.expanded { background: var(--primary); color:#1a0018; font-weight:700; }
 .group-btn.taken { background:#242430; border-color:#444; color:#666; text-decoration: line-through; }
@@ -63,7 +63,8 @@ textarea { width: 100%; font-family: monospace; }
 .idol-btn {
     padding: 11px 8px; border-radius: 8px; border: none;
     background: #2a2a3a; color: white; cursor: pointer; transition: all .15s;
-    font-size: 15px; font-weight: 600; width: 100%;
+    font-size: 13px; font-weight: 600; width: 100%;
+    overflow-wrap: break-word; word-break: break-word; white-space: normal;
 }
 .idol-btn:hover:not(:disabled) { background: var(--primary); transform: scale(1.05); }
 .idol-btn:disabled { opacity: .35; cursor: not-allowed; }
@@ -72,6 +73,27 @@ textarea { width: 100%; font-family: monospace; }
 .idol-btn.restricted { opacity: 1; background:#3a1220; border:1px solid var(--danger); color:#ff8fa3; }
 .idol-btn.restricted:hover { background:#3a1220; transform:none; }
 .idol-btn.restricted::after { content: " ❌"; }
+
+/* 成員懸浮資料卡：左邊條列式基本資料，右邊圖片 */
+.idol-hover-card {
+    position: fixed; z-index: 300; display: none;
+    background: #1c1c2c; border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.7);
+    pointer-events: none; max-width: 280px;
+}
+.idol-hover-card.show { display: flex; gap: 12px; align-items: flex-start; }
+.idol-hover-card .ihc-img {
+    width: 84px; height: 84px; border-radius: 10px; object-fit: cover;
+    background: #2a2a3a; flex-shrink: 0;
+}
+.idol-hover-card .ihc-noimg {
+    width: 84px; height: 84px; border-radius: 10px; background: #2a2a3a;
+    display: flex; align-items: center; justify-content: center;
+    color: #666; font-size: 11px; text-align: center; flex-shrink: 0;
+}
+.idol-hover-card .ihc-list { list-style: disc; margin: 0; padding-left: 18px; }
+.idol-hover-card .ihc-list li:first-child { font-weight: 800; color: var(--primary); font-size: 15px; list-style: none; margin-left: -18px; margin-bottom: 4px; }
+.idol-hover-card .ihc-list li { font-size: 12px; color: #ddd; line-height: 1.7; }
 
 /* ===== 美化按鈕 ===== */
 .btn {
@@ -142,6 +164,7 @@ table.editor input { width: 100%; padding: 6px 8px; font-size: 13px; }
 <h1>🎤 KPOP IDOL DRAFT 選秀</h1>
 <div id="connStatus"></div>
 <div id="app"></div>
+<div id="idolHoverCard" class="idol-hover-card"></div>
 
 <!-- Firebase compat SDK：作為免架站的雲端同步後端 -->
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
@@ -188,220 +211,296 @@ let expandedGroup = null; // 備選區目前展開的團體（同時只會有一
 
 // ==================== 偶像預設資料 ====================
 const BASE_IDOLS = [
-{ name:"Gaeul", group:"IVE", nationality:"韓國", birthYear:"2002", debutYear:"2021" },
-{ name:"Yujin", group:"IVE", nationality:"韓國", birthYear:"2003", debutYear:"2021" }, 
-{ name:"Rei", group:"IVE", nationality:"日本", birthYear:"2004", debutYear:"2021" }, 
-{ name:"Wonyoung", group:"IVE", nationality:"韓國", birthYear:"2004", debutYear:"2021" }, 
-{ name:"Liz", group:"IVE", nationality:"韓國", birthYear:"2004", debutYear:"2021" }, 
-{ name:"Leeseo", group:"IVE", nationality:"韓國", birthYear:"2007", debutYear:"2021" },
 
-{ name:"Sakura", group:"LE SSERAFIM", nationality:"日本", birthYear:"1998", debutYear:"2022" }, 
-{ name:"Chaewon", group:"LE SSERAFIM", nationality:"韓國", birthYear:"2000", debutYear:"2022" },
-{ name:"Yunjin", group:"LE SSERAFIM", nationality:"韓國/美國", birthYear:"2001", debutYear:"2022" }, 
-{ name:"Kazuha", group:"LE SSERAFIM", nationality:"日本", birthYear:"2003", debutYear:"2022" }, 
-{ name:"Eunchae", group:"LE SSERAFIM", nationality:"韓國", birthYear:"2006", debutYear:"2022" },
+{ name:"Gaeul", group:"IVE", nationality:"韓國", birthYear:"2002", debutYear:"2021", imageUrl:"" },
+{ name:"Yujin", group:"IVE", nationality:"韓國", birthYear:"2003", debutYear:"2021", imageUrl:"" },
+{ name:"Rei", group:"IVE", nationality:"日本", birthYear:"2004", debutYear:"2021", imageUrl:"" },
+{ name:"Wonyoung", group:"IVE", nationality:"韓國", birthYear:"2004", debutYear:"2021", imageUrl:"" },
+{ name:"Liz", group:"IVE", nationality:"韓國", birthYear:"2004", debutYear:"2021", imageUrl:"" },
+{ name:"Leeseo", group:"IVE", nationality:"韓國", birthYear:"2007", debutYear:"2021", imageUrl:"" },
 
-{ name:"Karina", group:"aespa", nationality:"韓國", birthYear:"2000", debutYear:"2020" }, 
-{ name:"Giselle", group:"aespa", nationality:"日本/韓國", birthYear:"2000", debutYear:"2020" }, 
-{ name:"Winter", group:"aespa", nationality:"韓國", birthYear:"2001", debutYear:"2020" }, 
-{ name:"NingNing", group:"aespa", nationality:"中國", birthYear:"2002", debutYear:"2020" },
+{ name:"Sakura", group:"LE SSERAFIM", nationality:"日本", birthYear:"1998", debutYear:"2022", imageUrl:"" },
+{ name:"Chaewon", group:"LE SSERAFIM", nationality:"韓國", birthYear:"2000", debutYear:"2022", imageUrl:"" },
+{ name:"Yunjin", group:"LE SSERAFIM", nationality:"韓國/美國", birthYear:"2001", debutYear:"2022", imageUrl:"" },
+{ name:"Kazuha", group:"LE SSERAFIM", nationality:"日本", birthYear:"2003", debutYear:"2022", imageUrl:"" },
+{ name:"Eunchae", group:"LE SSERAFIM", nationality:"韓國", birthYear:"2006", debutYear:"2022", imageUrl:"" },
 
-{ name:"Nayeon", group:"TWICE", nationality:"韓國", birthYear:"1995", debutYear:"2015" }, 
-{ name:"Jeongyeon", group:"TWICE", nationality:"韓國", birthYear:"1996", debutYear:"2015" }, 
-{ name:"Momo", group:"TWICE", nationality:"日本", birthYear:"1996", debutYear:"2015" },
-{ name:"Sana", group:"TWICE", nationality:"日本", birthYear:"1996", debutYear:"2015" }, 
-{ name:"Jihyo", group:"TWICE", nationality:"韓國", birthYear:"1997", debutYear:"2015" }, 
-{ name:"Mina", group:"TWICE", nationality:"日本", birthYear:"1997", debutYear:"2015" },
-{ name:"Dahyun", group:"TWICE", nationality:"韓國", birthYear:"1998", debutYear:"2015" }, 
-{ name:"Chaeyoung", group:"TWICE", nationality:"韓國", birthYear:"1999", debutYear:"2015" }, 
-{ name:"Tzuyu", group:"TWICE", nationality:"台灣", birthYear:"1999", debutYear:"2015" },
+{ name:"Karina", group:"aespa", nationality:"韓國", birthYear:"2000", debutYear:"2020", imageUrl:"" },
+{ name:"Giselle", group:"aespa", nationality:"日本/韓國", birthYear:"2000", debutYear:"2020", imageUrl:"" },
+{ name:"Winter", group:"aespa", nationality:"韓國", birthYear:"2001", debutYear:"2020", imageUrl:"" },
+{ name:"NingNing", group:"aespa", nationality:"中國", birthYear:"2002", debutYear:"2020", imageUrl:"" },
 
-{ name:"Yeji", group:"ITZY", nationality:"韓國", birthYear:"2000", debutYear:"2019" }, 
-{ name:"Lia", group:"ITZY", nationality:"韓國", birthYear:"2000", debutYear:"2019" }, 
-{ name:"Ryujin", group:"ITZY", nationality:"韓國", birthYear:"2001", debutYear:"2019" },
-{ name:"Chaeryeong", group:"ITZY", nationality:"韓國", birthYear:"2001", debutYear:"2019" }, 
-{ name:"Yuna", group:"ITZY", nationality:"韓國", birthYear:"2003", debutYear:"2019" },
+{ name:"Nayeon", group:"TWICE", nationality:"韓國", birthYear:"1995", debutYear:"2015", imageUrl:"" },
+{ name:"Jeongyeon", group:"TWICE", nationality:"韓國", birthYear:"1996", debutYear:"2015", imageUrl:"" },
+{ name:"Momo", group:"TWICE", nationality:"日本", birthYear:"1996", debutYear:"2015", imageUrl:"" },
+{ name:"Sana", group:"TWICE", nationality:"日本", birthYear:"1996", debutYear:"2015", imageUrl:"" },
+{ name:"Jihyo", group:"TWICE", nationality:"韓國", birthYear:"1997", debutYear:"2015", imageUrl:"" },
+{ name:"Mina", group:"TWICE", nationality:"日本", birthYear:"1997", debutYear:"2015", imageUrl:"" },
+{ name:"Dahyun", group:"TWICE", nationality:"韓國", birthYear:"1998", debutYear:"2015", imageUrl:"" },
+{ name:"Chaeyoung", group:"TWICE", nationality:"韓國", birthYear:"1999", debutYear:"2015", imageUrl:"" },
+{ name:"Tzuyu", group:"TWICE", nationality:"台灣", birthYear:"1999", debutYear:"2015", imageUrl:"" },
 
-{ name:"Lily", group:"NMIXX", nationality:"韓國/澳洲", birthYear:"2002", debutYear:"2022" }, 
-{ name:"Haewon", group:"NMIXX", nationality:"韓國", birthYear:"2003", debutYear:"2022" }, 
-{ name:"Sullyoon", group:"NMIXX", nationality:"韓國", birthYear:"2004", debutYear:"2022" },
-{ name:"Bae", group:"NMIXX", nationality:"韓國", birthYear:"2004", debutYear:"2022" }, 
-{ name:"Jiwoo", group:"NMIXX", nationality:"韓國", birthYear:"2005", debutYear:"2022" }, 
-{ name:"Kyujin", group:"NMIXX", nationality:"韓國", birthYear:"2006", debutYear:"2022" },
+{ name:"Yeji", group:"ITZY", nationality:"韓國", birthYear:"2000", debutYear:"2019", imageUrl:"" },
+{ name:"Lia", group:"ITZY", nationality:"韓國", birthYear:"2000", debutYear:"2019", imageUrl:"" },
+{ name:"Ryujin", group:"ITZY", nationality:"韓國", birthYear:"2001", debutYear:"2019", imageUrl:"" },
+{ name:"Chaeryeong", group:"ITZY", nationality:"韓國", birthYear:"2001", debutYear:"2019", imageUrl:"" },
+{ name:"Yuna", group:"ITZY", nationality:"韓國", birthYear:"2003", debutYear:"2019", imageUrl:"" },
 
-{ name:"Hayoung", group:"fromis_9", nationality:"韓國", birthYear:"1997", debutYear:"2018" }, 
-{ name:"Jiwon", group:"fromis_9", nationality:"韓國", birthYear:"1998", debutYear:"2018" }, 
-{ name:"Chaeyoung", group:"fromis_9", nationality:"韓國", birthYear:"2000", debutYear:"2018" },
-{ name:"Nagyung", group:"fromis_9", nationality:"韓國", birthYear:"2000", debutYear:"2018" }, 
-{ name:"Jiheon", group:"fromis_9", nationality:"韓國", birthYear:"2003", debutYear:"2018" },
+{ name:"Lily", group:"NMIXX", nationality:"韓國/澳洲", birthYear:"2002", debutYear:"2022", imageUrl:"" },
+{ name:"Haewon", group:"NMIXX", nationality:"韓國", birthYear:"2003", debutYear:"2022", imageUrl:"" },
+{ name:"Sullyoon", group:"NMIXX", nationality:"韓國", birthYear:"2004", debutYear:"2022", imageUrl:"" },
+{ name:"Bae", group:"NMIXX", nationality:"韓國", birthYear:"2004", debutYear:"2022", imageUrl:"" },
+{ name:"Jiwoo", group:"NMIXX", nationality:"韓國", birthYear:"2005", debutYear:"2022", imageUrl:"" },
+{ name:"Kyujin", group:"NMIXX", nationality:"韓國", birthYear:"2006", debutYear:"2022", imageUrl:"" },
 
-{ name:"Sumin", group:"STAYC", nationality:"韓國", birthYear:"2001", debutYear:"2020" }, 
-{ name:"Sieun", group:"STAYC", nationality:"韓國", birthYear:"2001", debutYear:"2020" }, 
-{ name:"Isa", group:"STAYC", nationality:"韓國", birthYear:"2002", debutYear:"2020" },
-{ name:"Seeun", group:"STAYC", nationality:"韓國", birthYear:"2003", debutYear:"2020" }, 
-{ name:"Yoon", group:"STAYC", nationality:"韓國", birthYear:"2004", debutYear:"2020" }, 
-{ name:"J", group:"STAYC", nationality:"韓國", birthYear:"2004", debutYear:"2020" },
+{ name:"Hayoung", group:"fromis_9", nationality:"韓國", birthYear:"1997", debutYear:"2018", imageUrl:"" },
+{ name:"Jiwon", group:"fromis_9", nationality:"韓國", birthYear:"1998", debutYear:"2018", imageUrl:"" },
+{ name:"Chaeyoung", group:"fromis_9", nationality:"韓國", birthYear:"2000", debutYear:"2018", imageUrl:"" },
+{ name:"Nagyung", group:"fromis_9", nationality:"韓國", birthYear:"2000", debutYear:"2018", imageUrl:"" },
+{ name:"Jiheon", group:"fromis_9", nationality:"韓國", birthYear:"2003", debutYear:"2018", imageUrl:"" },
 
-{ name:"Carmen", group:"Hearts2Hearts", nationality:"印尼", birthYear:"2006", debutYear:"2025" }, 
-{ name:"Jiwoo", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2006", debutYear:"2025" }, 
-{ name:"Yuha", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2007", debutYear:"2025" },
-{ name:"Stella", group:"Hearts2Hearts", nationality:"韓國/加拿大", birthYear:"2007", debutYear:"2025" }, 
-{ name:"Juun", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2008", debutYear:"2025" }, 
-{ name:"A-na", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2008", debutYear:"2025" },
-{ name:"Ian", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2009", debutYear:"2025" }, 
-{ name:"Ye-on", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2010", debutYear:"2025" },
+{ name:"Sumin", group:"STAYC", nationality:"韓國", birthYear:"2001", debutYear:"2020", imageUrl:"" },
+{ name:"Sieun", group:"STAYC", nationality:"韓國", birthYear:"2001", debutYear:"2020", imageUrl:"" },
+{ name:"Isa", group:"STAYC", nationality:"韓國", birthYear:"2002", debutYear:"2020", imageUrl:"" },
+{ name:"Seeun", group:"STAYC", nationality:"韓國", birthYear:"2003", debutYear:"2020", imageUrl:"" },
+{ name:"Yoon", group:"STAYC", nationality:"韓國", birthYear:"2004", debutYear:"2020", imageUrl:"" },
+{ name:"J", group:"STAYC", nationality:"韓國", birthYear:"2004", debutYear:"2020", imageUrl:"" },
 
-{ name:"Woni", group:"RESCENE", nationality:"韓國", birthYear:"2004", debutYear:"2024" }, 
-{ name:"Liv", group:"RESCENE", nationality:"韓國", birthYear:"2006", debutYear:"2024" }, 
-{ name:"Minami", group:"RESCENE", nationality:"日本", birthYear:"2006", debutYear:"2024" },
-{ name:"May", group:"RESCENE", nationality:"韓國", birthYear:"2008", debutYear:"2024" }, 
-{ name:"Zena", group:"RESCENE", nationality:"韓國", birthYear:"2008", debutYear:"2024" },
+{ name:"Carmen", group:"Hearts2Hearts", nationality:"印尼", birthYear:"2006", debutYear:"2025", imageUrl:"" },
+{ name:"Jiwoo", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
+{ name:"Yuha", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
+{ name:"Stella", group:"Hearts2Hearts", nationality:"韓國/加拿大", birthYear:"2007", debutYear:"2025", imageUrl:"" },
+{ name:"Juun", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2008", debutYear:"2025", imageUrl:"" },
+{ name:"A-na", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2008", debutYear:"2025", imageUrl:"" },
+{ name:"Ian", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2009", debutYear:"2025", imageUrl:"" },
+{ name:"Ye-on", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2010", debutYear:"2025", imageUrl:"" },
 
-{ name:"Keena", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2002", debutYear:"2022" }, 
-{ name:"ChanelleMoon", group:"FIFTY FIFTY", nationality:"韓國/美國", birthYear:"2003", debutYear:"2022" }, 
-{ name:"Yewon", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2005", debutYear:"2022" },
-{ name:"Hana", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2006", debutYear:"2022" }, 
-{ name:"Athena", group:"FIFTY FIFTY", nationality:"韓國/瑞典", birthYear:"2007", debutYear:"2022" },
+{ name:"Woni", group:"RESCENE", nationality:"韓國", birthYear:"2004", debutYear:"2024", imageUrl:"" },
+{ name:"Liv", group:"RESCENE", nationality:"韓國", birthYear:"2006", debutYear:"2024", imageUrl:"" },
+{ name:"Minami", group:"RESCENE", nationality:"日本", birthYear:"2006", debutYear:"2024", imageUrl:"" },
+{ name:"May", group:"RESCENE", nationality:"韓國", birthYear:"2008", debutYear:"2024", imageUrl:"" },
+{ name:"Zena", group:"RESCENE", nationality:"韓國", birthYear:"2008", debutYear:"2024", imageUrl:"" },
 
-{ name:"Leesol", group:"KiiiKiii", nationality:"韓國", birthYear:"2005", debutYear:"2025" }, 
-{ name:"Sui", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025" }, 
-{ name:"Jiyu", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025" },
-{ name:"Haum", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025" }, 
-{ name:"Kya", group:"KiiiKiii", nationality:"韓國", birthYear:"2010", debutYear:"2025" },
+{ name:"Keena", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2002", debutYear:"2022", imageUrl:"" },
+{ name:"ChanelleMoon", group:"FIFTY FIFTY", nationality:"韓國/美國", birthYear:"2003", debutYear:"2022", imageUrl:"" },
+{ name:"Yewon", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2005", debutYear:"2022", imageUrl:"" },
+{ name:"Hana", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2006", debutYear:"2022", imageUrl:"" },
+{ name:"Athena", group:"FIFTY FIFTY", nationality:"韓國/瑞典", birthYear:"2007", debutYear:"2022", imageUrl:"" },
 
-{ name:"JULIE", group:"KISS OF LIFE", nationality:"韓國/美國", birthYear:"2000", debutYear:"2023" },
-{ name:"NATTY", group:"KISS OF LIFE", nationality:"泰國", birthYear:"2002", debutYear:"2023" },
-{ name:"BELLE", group:"KISS OF LIFE", nationality:"韓國/美國", birthYear:"2004", debutYear:"2023" },
-{ name:"HANEUL", group:"KISS OF LIFE", nationality:"韓國", birthYear:"2005", debutYear:"2023" },
+{ name:"Leesol", group:"KiiiKiii", nationality:"韓國", birthYear:"2005", debutYear:"2025", imageUrl:"" },
+{ name:"Sui", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
+{ name:"Jiyu", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
+{ name:"Haum", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
+{ name:"Kya", group:"KiiiKiii", nationality:"韓國", birthYear:"2010", debutYear:"2025", imageUrl:"" },
 
-{ name:"Yunah", group:"ILLIT", nationality:"韓國", birthYear:"2004", debutYear:"2024" }, 
-{ name:"Minju", group:"ILLIT", nationality:"韓國", birthYear:"2004", debutYear:"2024" }, 
-{ name:"Moka", group:"ILLIT", nationality:"日本", birthYear:"2004", debutYear:"2024" },
-{ name:"Wonhee", group:"ILLIT", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
-{ name:"Iroha", group:"ILLIT", nationality:"日本", birthYear:"2008", debutYear:"2024" },
+{ name:"JULIE", group:"KISS OF LIFE", nationality:"韓國/美國", birthYear:"2000", debutYear:"2023", imageUrl:"" },
+{ name:"NATTY", group:"KISS OF LIFE", nationality:"泰國", birthYear:"2002", debutYear:"2023", imageUrl:"" },
+{ name:"BELLE", group:"KISS OF LIFE", nationality:"韓國/美國", birthYear:"2004", debutYear:"2023", imageUrl:"" },
+{ name:"HANEUL", group:"KISS OF LIFE", nationality:"韓國", birthYear:"2005", debutYear:"2023", imageUrl:"" },
 
-{ name:"Miyeon", group:"i-dle", nationality:"韓國", birthYear:"1997", debutYear:"2018" }, 
-{ name:"Minnie", group:"i-dle", nationality:"泰國", birthYear:"1997", debutYear:"2018" }, 
-{ name:"Seoyeon", group:"i-dle", nationality:"韓國", birthYear:"1998", debutYear:"2018" },
-{ name:"Yuqi", group:"i-dle", nationality:"中國", birthYear:"1999", debutYear:"2018" }, 
-{ name:"Shuhwa", group:"i-dle", nationality:"台灣", birthYear:"2000", debutYear:"2018" },
+{ name:"Yunah", group:"ILLIT", nationality:"韓國", birthYear:"2004", debutYear:"2024", imageUrl:"" },
+{ name:"Minju", group:"ILLIT", nationality:"韓國", birthYear:"2004", debutYear:"2024", imageUrl:"" },
+{ name:"Moka", group:"ILLIT", nationality:"日本", birthYear:"2004", debutYear:"2024", imageUrl:"" },
+{ name:"Wonhee", group:"ILLIT", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
+{ name:"Iroha", group:"ILLIT", nationality:"日本", birthYear:"2008", debutYear:"2024", imageUrl:"" },
 
-{ name:"SeoYeon", group:"tripleS", nationality:"韓國", birthYear:"2003", debutYear:"2023" }, 
-{ name:"HyeRin", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023" }, 
-{ name:"JiWoo", group:"tripleS", nationality:"韓國", birthYear:"2005", debutYear:"2023" },
-{ name:"ChaeYeon", group:"tripleS", nationality:"韓國", birthYear:"2004", debutYear:"2023" }, 
-{ name:"YooYeon", group:"tripleS", nationality:"韓國", birthYear:"2001", debutYear:"2023" }, 
-{ name:"SooMin", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023" },
-{ name:"NaKyoung", group:"tripleS", nationality:"韓國", birthYear:"2002", debutYear:"2023" }, 
-{ name:"YuBin", group:"tripleS", nationality:"韓國", birthYear:"2005", debutYear:"2023" }, 
-{ name:"Kaede", group:"tripleS", nationality:"日本", birthYear:"2005", debutYear:"2023" },
-{ name:"DaHyun", group:"tripleS", nationality:"韓國", birthYear:"2003", debutYear:"2023" }, 
-{ name:"Kotone", group:"tripleS", nationality:"日本", birthYear:"2004", debutYear:"2023" }, 
-{ name:"YeonJi", group:"tripleS", nationality:"韓國", birthYear:"2008", debutYear:"2023" },
-{ name:"Nien", group:"tripleS", nationality:"台灣", birthYear:"2003", debutYear:"2023" }, 
-{ name:"SoHyun", group:"tripleS", nationality:"韓國", birthYear:"2002", debutYear:"2023" }, 
-{ name:"Xinyu", group:"tripleS", nationality:"中國", birthYear:"2002", debutYear:"2023" },
-{ name:"Mayu", group:"tripleS", nationality:"日本", birthYear:"2002", debutYear:"2023" }, 
-{ name:"Lynn", group:"tripleS", nationality:"日本", birthYear:"2006", debutYear:"2023" }, 
-{ name:"JooBin", group:"tripleS", nationality:"韓國", birthYear:"2009", debutYear:"2023" },
-{ name:"HaYeon", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023" }, 
-{ name:"ShiOn", group:"tripleS", nationality:"韓國", birthYear:"2006", debutYear:"2023" }, 
-{ name:"ChaeWon", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023" },
-{ name:"Sullin", group:"tripleS", nationality:"泰國", birthYear:"2006", debutYear:"2023" }, 
-{ name:"SeoAh", group:"tripleS", nationality:"韓國", birthYear:"2010", debutYear:"2023" }, 
-{ name:"JiYeon", group:"tripleS", nationality:"韓國", birthYear:"2004", debutYear:"2023" },
+{ name:"Miyeon", group:"i-dle", nationality:"韓國", birthYear:"1997", debutYear:"2018", imageUrl:"" },
+{ name:"Minnie", group:"i-dle", nationality:"泰國", birthYear:"1997", debutYear:"2018", imageUrl:"" },
+{ name:"Seoyeon", group:"i-dle", nationality:"韓國", birthYear:"1998", debutYear:"2018", imageUrl:"" },
+{ name:"Yuqi", group:"i-dle", nationality:"中國", birthYear:"1999", debutYear:"2018", imageUrl:"" },
+{ name:"Shuhwa", group:"i-dle", nationality:"台灣", birthYear:"2000", debutYear:"2018", imageUrl:"" },
 
-{ name:"MAI", group:"izna", nationality:"日本", birthYear:"2004", debutYear:"2024" }, 
-{ name:"BANG JEE MIN", group:"izna", nationality:"韓國", birthYear:"2005", debutYear:"2024" }, 
-{ name:"KOKO", group:"izna", nationality:"日本", birthYear:"2006", debutYear:"2024" },
-{ name:"RYU SA RANG", group:"izna", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
-{ name:"CHOI JUNG EUN", group:"izna", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
-{ name:"JEONG SAE BI", group:"izna", nationality:"韓國", birthYear:"2008", debutYear:"2024" },
+{ name:"SeoYeon", group:"tripleS", nationality:"韓國", birthYear:"2003", debutYear:"2023", imageUrl:"" },
+{ name:"HyeRin", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023", imageUrl:"" },
+{ name:"JiWoo", group:"tripleS", nationality:"韓國", birthYear:"2005", debutYear:"2023", imageUrl:"" },
+{ name:"ChaeYeon", group:"tripleS", nationality:"韓國", birthYear:"2004", debutYear:"2023", imageUrl:"" },
+{ name:"YooYeon", group:"tripleS", nationality:"韓國", birthYear:"2001", debutYear:"2023", imageUrl:"" },
+{ name:"SooMin", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023", imageUrl:"" },
+{ name:"NaKyoung", group:"tripleS", nationality:"韓國", birthYear:"2002", debutYear:"2023", imageUrl:"" },
+{ name:"YuBin", group:"tripleS", nationality:"韓國", birthYear:"2005", debutYear:"2023", imageUrl:"" },
+{ name:"Kaede", group:"tripleS", nationality:"日本", birthYear:"2005", debutYear:"2023", imageUrl:"" },
+{ name:"DaHyun", group:"tripleS", nationality:"韓國", birthYear:"2003", debutYear:"2023", imageUrl:"" },
+{ name:"Kotone", group:"tripleS", nationality:"日本", birthYear:"2004", debutYear:"2023", imageUrl:"" },
+{ name:"YeonJi", group:"tripleS", nationality:"韓國", birthYear:"2008", debutYear:"2023", imageUrl:"" },
+{ name:"Nien", group:"tripleS", nationality:"台灣", birthYear:"2003", debutYear:"2023", imageUrl:"" },
+{ name:"SoHyun", group:"tripleS", nationality:"韓國", birthYear:"2002", debutYear:"2023", imageUrl:"" },
+{ name:"Xinyu", group:"tripleS", nationality:"中國", birthYear:"2002", debutYear:"2023", imageUrl:"" },
+{ name:"Mayu", group:"tripleS", nationality:"日本", birthYear:"2002", debutYear:"2023", imageUrl:"" },
+{ name:"Lynn", group:"tripleS", nationality:"日本", birthYear:"2006", debutYear:"2023", imageUrl:"" },
+{ name:"JooBin", group:"tripleS", nationality:"韓國", birthYear:"2009", debutYear:"2023", imageUrl:"" },
+{ name:"HaYeon", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023", imageUrl:"" },
+{ name:"ShiOn", group:"tripleS", nationality:"韓國", birthYear:"2006", debutYear:"2023", imageUrl:"" },
+{ name:"ChaeWon", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023", imageUrl:"" },
+{ name:"Sullin", group:"tripleS", nationality:"泰國", birthYear:"2006", debutYear:"2023", imageUrl:"" },
+{ name:"SeoAh", group:"tripleS", nationality:"韓國", birthYear:"2010", debutYear:"2023", imageUrl:"" },
+{ name:"JiYeon", group:"tripleS", nationality:"韓國", birthYear:"2004", debutYear:"2023", imageUrl:"" },
 
-{ name:"Sooin", group:"MEOVV", nationality:"韓國", birthYear:"2005", debutYear:"2024" }, 
-{ name:"Gawon", group:"MEOVV", nationality:"韓國/美國", birthYear:"2005", debutYear:"2024" }, 
-{ name:"Anna", group:"MEOVV", nationality:"日本", birthYear:"2005", debutYear:"2024" },
-{ name:"Narin", group:"MEOVV", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
-{ name:"Ella", group:"MEOVV", nationality:"韓國/美國", birthYear:"2008", debutYear:"2024" },
+{ name:"MAI", group:"izna", nationality:"日本", birthYear:"2004", debutYear:"2024", imageUrl:"" },
+{ name:"BANG JEE MIN", group:"izna", nationality:"韓國", birthYear:"2005", debutYear:"2024", imageUrl:"" },
+{ name:"KOKO", group:"izna", nationality:"日本", birthYear:"2006", debutYear:"2024", imageUrl:"" },
+{ name:"RYU SA RANG", group:"izna", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
+{ name:"CHOI JUNG EUN", group:"izna", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
+{ name:"JEONG SAE BI", group:"izna", nationality:"韓國", birthYear:"2008", debutYear:"2024", imageUrl:"" },
 
-{ name:"Choi Yu Jin", group:"Kep1er", nationality:"韓國", birthYear:"1996", debutYear:"2022" }, 
-{ name:"Shen Xiao Ting", group:"Kep1er", nationality:"中國", birthYear:"1999", debutYear:"2022" }, 
-{ name:"Kim Chae Hyun", group:"Kep1er", nationality:"韓國", birthYear:"2002", debutYear:"2022" },
-{ name:"Kim Da Yeon", group:"Kep1er", nationality:"韓國", birthYear:"2003", debutYear:"2022" }, 
-{ name:"Ezaki Hikaru", group:"Kep1er", nationality:"日本", birthYear:"2004", debutYear:"2022" }, 
-{ name:"Huening Bahiyyih", group:"Kep1er", nationality:"韓國/美國", birthYear:"2004", debutYear:"2022" },
+{ name:"Sooin", group:"MEOVV", nationality:"韓國", birthYear:"2005", debutYear:"2024", imageUrl:"" },
+{ name:"Gawon", group:"MEOVV", nationality:"韓國/美國", birthYear:"2005", debutYear:"2024", imageUrl:"" },
+{ name:"Anna", group:"MEOVV", nationality:"日本", birthYear:"2005", debutYear:"2024", imageUrl:"" },
+{ name:"Narin", group:"MEOVV", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
+{ name:"Ella", group:"MEOVV", nationality:"韓國/美國", birthYear:"2008", debutYear:"2024", imageUrl:"" },
 
-{ name:"MASHIRO", group:"MADEIN", nationality:"日本", birthYear:"1999", debutYear:"2024" }, 
-{ name:"MiU", group:"MADEIN", nationality:"日本", birthYear:"2003", debutYear:"2024" }, 
-{ name:"SERINA", group:"MADEIN", nationality:"日本", birthYear:"2006", debutYear:"2024" }, 
-{ name:"NAGOMI", group:"MADEIN", nationality:"日本", birthYear:"2007", debutYear:"2024" },
+{ name:"Choi Yu Jin", group:"Kep1er", nationality:"韓國", birthYear:"1996", debutYear:"2022", imageUrl:"" },
+{ name:"Shen Xiao Ting", group:"Kep1er", nationality:"中國", birthYear:"1999", debutYear:"2022", imageUrl:"" },
+{ name:"Kim Chae Hyun", group:"Kep1er", nationality:"韓國", birthYear:"2002", debutYear:"2022", imageUrl:"" },
+{ name:"Kim Da Yeon", group:"Kep1er", nationality:"韓國", birthYear:"2003", debutYear:"2022", imageUrl:"" },
+{ name:"Ezaki Hikaru", group:"Kep1er", nationality:"日本", birthYear:"2004", debutYear:"2022", imageUrl:"" },
+{ name:"Huening Bahiyyih", group:"Kep1er", nationality:"韓國/美國", birthYear:"2004", debutYear:"2022", imageUrl:"" },
 
-{ name:"Seoi", group:"H1-KEY", nationality:"韓國", birthYear:"2000", debutYear:"2022" }, 
-{ name:"Riina", group:"H1-KEY", nationality:"韓國", birthYear:"2001", debutYear:"2022" }, 
-{ name:"Hwiseo", group:"H1-KEY", nationality:"韓國", birthYear:"2002", debutYear:"2022" }, 
-{ name:"Yel", group:"H1-KEY", nationality:"韓國", birthYear:"2004", debutYear:"2022" },
+{ name:"MASHIRO", group:"MADEIN", nationality:"日本", birthYear:"1999", debutYear:"2024", imageUrl:"" },
+{ name:"MiU", group:"MADEIN", nationality:"日本", birthYear:"2003", debutYear:"2024", imageUrl:"" },
+{ name:"SERINA", group:"MADEIN", nationality:"日本", birthYear:"2006", debutYear:"2024", imageUrl:"" },
+{ name:"NAGOMI", group:"MADEIN", nationality:"日本", birthYear:"2007", debutYear:"2024", imageUrl:"" },
 
-{ name:"Yeowon", group:"USPEER", nationality:"韓國", birthYear:"2006", debutYear:"2025" },
-{ name:"Soee", group:"USPEER", nationality:"韓國", birthYear:"2007", debutYear:"2025" },
-{ name:"Sian", group:"USPEER", nationality:"韓國", birthYear:"2007", debutYear:"2025" },
-{ name:"Seoyu", group:"USPEER", nationality:"韓國", birthYear:"2007", debutYear:"2025" },
-{ name:"Daon", group:"USPEER", nationality:"韓國", birthYear:"2008", debutYear:"2025" },
-{ name:"Chaena", group:"USPEER", nationality:"韓國", birthYear:"2009", debutYear:"2025" },
-{ name:"Roa", group:"USPEER", nationality:"韓國", birthYear:"2009", debutYear:"2025" },
+{ name:"Seoi", group:"H1-KEY", nationality:"韓國", birthYear:"2000", debutYear:"2022", imageUrl:"" },
+{ name:"Riina", group:"H1-KEY", nationality:"韓國", birthYear:"2001", debutYear:"2022", imageUrl:"" },
+{ name:"Hwiseo", group:"H1-KEY", nationality:"韓國", birthYear:"2002", debutYear:"2022", imageUrl:"" },
+{ name:"Yel", group:"H1-KEY", nationality:"韓國", birthYear:"2004", debutYear:"2022", imageUrl:"" },
 
-{ name:"HITOMI", group:"SAY MY NAME", nationality:"日本", birthYear:"2001", debutYear:"2024" }, 
-{ name:"SHUIE", group:"SAY MY NAME", nationality:"中國", birthYear:"2004", debutYear:"2024" }, 
-{ name:"MEI", group:"SAY MY NAME", nationality:"日本", birthYear:"2005", debutYear:"2024" },
-{ name:"KANNY", group:"SAY MY NAME", nationality:"泰國", birthYear:"2005", debutYear:"2024" }, 
-{ name:"SOHA", group:"SAY MY NAME", nationality:"韓國", birthYear:"2006", debutYear:"2024" }, 
-{ name:"DOHEE", group:"SAY MY NAME", nationality:"韓國", birthYear:"2006", debutYear:"2024" },
-{ name:"JUNHWI", group:"SAY MY NAME", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
-{ name:"SEUNGJOO", group:"SAY MY NAME", nationality:"韓國", birthYear:"2010", debutYear:"2024" },
+{ name:"Yeowon", group:"USPEER", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
+{ name:"Soee", group:"USPEER", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
+{ name:"Sian", group:"USPEER", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
+{ name:"Seoyu", group:"USPEER", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
+{ name:"Daon", group:"USPEER", nationality:"韓國", birthYear:"2008", debutYear:"2025", imageUrl:"" },
+{ name:"Chaena", group:"USPEER", nationality:"韓國", birthYear:"2009", debutYear:"2025", imageUrl:"" },
+{ name:"Roa", group:"USPEER", nationality:"韓國", birthYear:"2009", debutYear:"2025", imageUrl:"" },
 
-{ name:"Ruka", group:"BABYMONSTER", nationality:"日本", birthYear:"2002", debutYear:"2024" }, 
-{ name:"Pharita", group:"BABYMONSTER", nationality:"泰國", birthYear:"2005", debutYear:"2024" }, 
-{ name:"Asa", group:"BABYMONSTER", nationality:"日本", birthYear:"2006", debutYear:"2024" },
-{ name:"Ahyeon", group:"BABYMONSTER", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
-{ name:"Rami", group:"BABYMONSTER", nationality:"韓國", birthYear:"2007", debutYear:"2024" }, 
-{ name:"Rora", group:"BABYMONSTER", nationality:"韓國", birthYear:"2008", debutYear:"2024" }, 
-{ name:"Chiquita", group:"BABYMONSTER", nationality:"泰國", birthYear:"2009", debutYear:"2024" },
+{ name:"HITOMI", group:"SAY MY NAME", nationality:"日本", birthYear:"2001", debutYear:"2024", imageUrl:"" },
+{ name:"SHUIE", group:"SAY MY NAME", nationality:"中國", birthYear:"2004", debutYear:"2024", imageUrl:"" },
+{ name:"MEI", group:"SAY MY NAME", nationality:"日本", birthYear:"2005", debutYear:"2024", imageUrl:"" },
+{ name:"KANNY", group:"SAY MY NAME", nationality:"泰國", birthYear:"2005", debutYear:"2024", imageUrl:"" },
+{ name:"SOHA", group:"SAY MY NAME", nationality:"韓國", birthYear:"2006", debutYear:"2024", imageUrl:"" },
+{ name:"DOHEE", group:"SAY MY NAME", nationality:"韓國", birthYear:"2006", debutYear:"2024", imageUrl:"" },
+{ name:"JUNHWI", group:"SAY MY NAME", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
+{ name:"SEUNGJOO", group:"SAY MY NAME", nationality:"韓國", birthYear:"2010", debutYear:"2024", imageUrl:"" },
 
-{ name:"Lim Na Young", group:"I.O.I", nationality:"韓國", birthYear:"1995", debutYear:"2016" }, 
-{ name:"Kim Chung Ha", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1996", debutYear:"2016" }, 
-{ name:"Kim Se Jeong", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1996", debutYear:"2016" },
-{ name:"Jung Chae Yeon", group:"I.O.I", nationality:"韓國", birthYear:"1997", debutYear:"2016" }, 
-{ name:"Zhou Jie Qiong", group:"I.O.I", nationality:"中國", birthYear:"1998", debutYear:"2016" },
-{ name:"Kim So Hye", group:"I.O.I", nationality:"中國", birthYear:"1999", debutYear:"2016" },
-{ name:"Yoo Yeon Jung", group:"I.O.I/WJSN", nationality:"韓國", birthYear:"1999", debutYear:"2016" },
-{ name:"Choi Yoo Jung", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2016" },
-{ name:"Kim Do Yeon", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2016" },
-{ name:"Kang Mi Na", group:"I.O.I", nationality:"韓國", birthYear:"1999", debutYear:"2016" },
-{ name:"Jeon So Mi", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"2001", debutYear:"2016" },
+{ name:"Ruka", group:"BABYMONSTER", nationality:"日本", birthYear:"2002", debutYear:"2024", imageUrl:"" },
+{ name:"Pharita", group:"BABYMONSTER", nationality:"泰國", birthYear:"2005", debutYear:"2024", imageUrl:"" },
+{ name:"Asa", group:"BABYMONSTER", nationality:"日本", birthYear:"2006", debutYear:"2024", imageUrl:"" },
+{ name:"Ahyeon", group:"BABYMONSTER", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
+{ name:"Rami", group:"BABYMONSTER", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
+{ name:"Rora", group:"BABYMONSTER", nationality:"韓國", birthYear:"2008", debutYear:"2024", imageUrl:"" },
+{ name:"Chiquita", group:"BABYMONSTER", nationality:"泰國", birthYear:"2009", debutYear:"2024", imageUrl:"" },
 
-{ name:"Hyojung", group:"OH MY GIRL", nationality:"韓國", birthYear:"1994", debutYear:"2015" }, 
-{ name:"Mimi", group:"OH MY GIRL", nationality:"韓國", birthYear:"1995", debutYear:"2015" }, 
-{ name:"YooA", group:"OH MY GIRL", nationality:"韓國", birthYear:"1995", debutYear:"2015" },
-{ name:"Seunghee", group:"OH MY GIRL", nationality:"韓國", birthYear:"1996", debutYear:"2015" }, 
-{ name:"Yubin", group:"OH MY GIRL", nationality:"韓國", birthYear:"1997", debutYear:"2015" }, 
-{ name:"Arin", group:"OH MY GIRL", nationality:"韓國", birthYear:"1999", debutYear:"2015" },
+{ name:"Lim Na Young", group:"I.O.I", nationality:"韓國", birthYear:"1995", debutYear:"2016", imageUrl:"" },
+{ name:"Kim Chung Ha", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1996", debutYear:"2016", imageUrl:"" },
+{ name:"Kim Se Jeong", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1996", debutYear:"2016", imageUrl:"" },
+{ name:"Jung Chae Yeon", group:"I.O.I", nationality:"韓國", birthYear:"1997", debutYear:"2016", imageUrl:"" },
+{ name:"Zhou Jie Qiong", group:"I.O.I", nationality:"中國", birthYear:"1998", debutYear:"2016", imageUrl:"" },
+{ name:"Kim So Hye", group:"I.O.I", nationality:"中國", birthYear:"1999", debutYear:"2016", imageUrl:"" },
+{ name:"Yoo Yeon Jung", group:"I.O.I/WJSN", nationality:"韓國", birthYear:"1999", debutYear:"2016", imageUrl:"" },
+{ name:"Choi Yoo Jung", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2016", imageUrl:"" },
+{ name:"Kim Do Yeon", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2016", imageUrl:"" },
+{ name:"Kang Mi Na", group:"I.O.I", nationality:"韓國", birthYear:"1999", debutYear:"2016", imageUrl:"" },
+{ name:"Jeon So Mi", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"2001", debutYear:"2016", imageUrl:"" },
 
-{ name:"SeolA", group:"WJSN", nationality:"韓國", birthYear:"1994", debutYear:"2016" }, 
-{ name:"Bona", group:"WJSN", nationality:"韓國", birthYear:"1995", debutYear:"2016" }, 
-{ name:"Exy", group:"WJSN", nationality:"韓國", birthYear:"1995", debutYear:"2016" },
-{ name:"Soobin", group:"WJSN", nationality:"韓國", birthYear:"1996", debutYear:"2016" }, 
-{ name:"Luda", group:"WJSN", nationality:"韓國", birthYear:"1997", debutYear:"2016" }, 
-{ name:"Dawon", group:"WJSN", nationality:"韓國", birthYear:"1997", debutYear:"2016" },
-{ name:"Eunseo", group:"WJSN", nationality:"韓國", birthYear:"1998", debutYear:"2016" }, 
-{ name:"Yeoreum", group:"WJSN", nationality:"韓國", birthYear:"1999", debutYear:"2016" }, 
-{ name:"Dayoung", group:"WJSN/SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2016" }, 
+{ name:"Hyojung", group:"OH MY GIRL", nationality:"韓國", birthYear:"1994", debutYear:"2015", imageUrl:"" },
+{ name:"Mimi", group:"OH MY GIRL", nationality:"韓國", birthYear:"1995", debutYear:"2015", imageUrl:"" },
+{ name:"YooA", group:"OH MY GIRL", nationality:"韓國", birthYear:"1995", debutYear:"2015", imageUrl:"" },
+{ name:"Seunghee", group:"OH MY GIRL", nationality:"韓國", birthYear:"1996", debutYear:"2015", imageUrl:"" },
+{ name:"Yubin", group:"OH MY GIRL", nationality:"韓國", birthYear:"1997", debutYear:"2015", imageUrl:"" },
+{ name:"Arin", group:"OH MY GIRL", nationality:"韓國", birthYear:"1999", debutYear:"2015", imageUrl:"" },
 
-{ name:"Choi Yena", group:"SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2022" }, 
-{ name:"Kwon Eunbi", group:"SOLO", nationality:"韓國", birthYear:"1995", debutYear:"2021" }, 
-{ name:"Lee ChaeYeon", group:"SOLO", nationality:"韓國", birthYear:"2000", debutYear:"2022" }, 
-{ name:"Jo YuRi", group:"SOLO", nationality:"韓國", birthYear:"2001", debutYear:"2021" },
-{ name:"GYUBI", group:"SOLO", nationality:"韓國", birthYear:"2006", debutYear:"2024" },
+{ name:"SeolA", group:"WJSN", nationality:"韓國", birthYear:"1994", debutYear:"2016", imageUrl:"" },
+{ name:"Bona", group:"WJSN", nationality:"韓國", birthYear:"1995", debutYear:"2016", imageUrl:"" },
+{ name:"Exy", group:"WJSN", nationality:"韓國", birthYear:"1995", debutYear:"2016", imageUrl:"" },
+{ name:"Soobin", group:"WJSN", nationality:"韓國", birthYear:"1996", debutYear:"2016", imageUrl:"" },
+{ name:"Luda", group:"WJSN", nationality:"韓國", birthYear:"1997", debutYear:"2016", imageUrl:"" },
+{ name:"Dawon", group:"WJSN", nationality:"韓國", birthYear:"1997", debutYear:"2016", imageUrl:"" },
+{ name:"Eunseo", group:"WJSN", nationality:"韓國", birthYear:"1998", debutYear:"2016", imageUrl:"" },
+{ name:"Yeoreum", group:"WJSN", nationality:"韓國", birthYear:"1999", debutYear:"2016", imageUrl:"" },
+{ name:"Dayoung", group:"WJSN/SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2016", imageUrl:"" },
 
-].map(i => ({ name: i.name, group: i.group, birthYear: i.birthYear || "", debutYear: i.debutYear || "", nationality: i.nationality }));
+{ name:"Choi Yena", group:"SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2022", imageUrl:"" },
+{ name:"Kwon Eunbi", group:"SOLO", nationality:"韓國", birthYear:"1995", debutYear:"2021", imageUrl:"" },
+{ name:"Lee ChaeYeon", group:"SOLO", nationality:"韓國", birthYear:"2000", debutYear:"2022", imageUrl:"" },
+{ name:"Jo YuRi", group:"SOLO", nationality:"韓國", birthYear:"2001", debutYear:"2021", imageUrl:"" },
+{ name:"GYUBIN", group:"SOLO", nationality:"韓國", birthYear:"2006", debutYear:"2024", imageUrl:"" },
+
+{ name:"JinSoul", group:"ARTMS", nationality:"韓國", birthYear:"1997", debutYear:"2024", imageUrl:"" },
+{ name:"HaSeul", group:"ARTMS", nationality:"韓國", birthYear:"1997", debutYear:"2024", imageUrl:"" },
+{ name:"Kim Lip", group:"ARTMS", nationality:"韓國", birthYear:"1999", debutYear:"2024", imageUrl:"" },
+{ name:"HeeJin", group:"ARTMS", nationality:"韓國", birthYear:"2000", debutYear:"2024", imageUrl:"" },
+{ name:"Choerry", group:"ARTMS", nationality:"韓國", birthYear:"2001", debutYear:"2024", imageUrl:"" },
+
+{ name:"MAIKA", group:"ODD YOUTH", nationality:"日本", birthYear:"2005", debutYear:"2024", imageUrl:"" },
+{ name:"MYAH", group:"ODD YOUTH", nationality:"韓國/美國", birthYear:"2006", debutYear:"2024", imageUrl:"" },
+{ name:"KANIE", group:"ODD YOUTH", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
+{ name:"SUMMER", group:"ODD YOUTH", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
+{ name:"YE EUM", group:"ODD YOUTH", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
+
+{ name:"Park Cho Rong", group:"Apink", nationality:"韓國", birthYear:"1991", debutYear:"2011", imageUrl:"" },
+{ name:"Yoon Bo Mi", group:"Apink", nationality:"韓國", birthYear:"1993", debutYear:"2011", imageUrl:"" },
+{ name:"Jeong Eun Ji", group:"Apink", nationality:"韓國", birthYear:"1993", debutYear:"2011", imageUrl:"" },
+{ name:"Kim Nam Joo", group:"Apink", nationality:"韓國", birthYear:"1995", debutYear:"2011", imageUrl:"" },
+{ name:"Oh Ha Young", group:"Apink", nationality:"韓國", birthYear:"1996", debutYear:"2011", imageUrl:"" },
+
+{ name:"Irene", group:"Red Velvet", nationality:"韓國", birthYear:"1991", debutYear:"2014", imageUrl:"" },
+{ name:"Seulgi", group:"Red Velvet", nationality:"韓國", birthYear:"1994", debutYear:"2014", imageUrl:"" },
+{ name:"Wendy", group:"Red Velvet", nationality:"韓國", birthYear:"1994", debutYear:"2014", imageUrl:"" },
+{ name:"Joy", group:"Red Velvet", nationality:"韓國", birthYear:"1996", debutYear:"2014", imageUrl:"" },
+{ name:"Yeri", group:"Red Velvet", nationality:"韓國", birthYear:"1999", debutYear:"2014", imageUrl:"" },
+
+{ name:"Michi", group:"AtHeart", nationality:"日本/美國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
+{ name:"Arin", group:"AtHeart", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
+{ name:"Katelyn", group:"AtHeart", nationality:"菲律賓", birthYear:"2007", debutYear:"2025", imageUrl:"" },
+{ name:"Bome", group:"AtHeart", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
+{ name:"Seohyeon", group:"AtHeart", nationality:"韓國", birthYear:"2008", debutYear:"2025", imageUrl:"" },
+{ name:"Aurora", group:"AtHeart", nationality:"日本", birthYear:"2009", debutYear:"2025", imageUrl:"" },
+{ name:"Nahyun", group:"AtHeart", nationality:"韓國", birthYear:"2009", debutYear:"2025", imageUrl:"" },
+
+{ name:"Won Hwayeon", group:"ifeye", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
+{ name:"Taerin", group:"ifeye", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
+{ name:"Rahee", group:"ifeye", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
+{ name:"Kasia", group:"ifeye", nationality:"韓國", birthYear:"2008", debutYear:"2025", imageUrl:"" },
+{ name:"Meu", group:"ifeye", nationality:"韓國", birthYear:"2008", debutYear:"2025", imageUrl:"" },
+{ name:"Sasha", group:"ifeye", nationality:"韓國", birthYear:"2009", debutYear:"2025", imageUrl:"" },
+
+{ name:"SANGAH", group:"LIGHTSUM", nationality:"韓國", birthYear:"2002", debutYear:"2021", imageUrl:"" },
+{ name:"CHOWON", group:"LIGHTSUM", nationality:"韓國", birthYear:"2002", debutYear:"2021", imageUrl:"" },
+{ name:"NAYOUNG", group:"LIGHTSUM", nationality:"韓國", birthYear:"2002", debutYear:"2021", imageUrl:"" },
+{ name:"HINA", group:"LIGHTSUM", nationality:"日本", birthYear:"2003", debutYear:"2021", imageUrl:"" },
+{ name:"JUHYEON", group:"LIGHTSUM", nationality:"韓國", birthYear:"2004", debutYear:"2021", imageUrl:"" },
+{ name:"YUJEONG", group:"LIGHTSUM", nationality:"韓國", birthYear:"2004", debutYear:"2021", imageUrl:"" },
+
+{ name:"Sunhye", group:"YOUNG POSSE", nationality:"韓國", birthYear:"2004", debutYear:"2023", imageUrl:"" },
+{ name:"Yeonjung", group:"YOUNG POSSE", nationality:"韓國", birthYear:"2004", debutYear:"2023", imageUrl:"" },
+{ name:"Jiana", group:"YOUNG POSSE", nationality:"韓國", birthYear:"2006", debutYear:"2023", imageUrl:"" },
+{ name:"Doeun", group:"YOUNG POSSE", nationality:"韓國", birthYear:"2007", debutYear:"2023", imageUrl:"" },
+{ name:"Jieun", group:"YOUNG POSSE", nationality:"韓國", birthYear:"2009", debutYear:"2023", imageUrl:"" },
+
+{ name:"MOON SUA", group:"Billlie", nationality:"韓國", birthYear:"1999", debutYear:"2021", imageUrl:"" },
+{ name:"SUHYEON", group:"Billlie", nationality:"韓國", birthYear:"2000", debutYear:"2021", imageUrl:"" },
+{ name:"HARAM", group:"Billlie", nationality:"韓國", birthYear:"2001", debutYear:"2021", imageUrl:"" },
+{ name:"TSUKI", group:"Billlie", nationality:"日本", birthYear:"2002", debutYear:"2021", imageUrl:"" },
+{ name:"SHEON", group:"Billlie", nationality:"韓國", birthYear:"2003", debutYear:"2021", imageUrl:"" },
+{ name:"SIYOON", group:"Billlie", nationality:"韓國", birthYear:"2005", debutYear:"2021", imageUrl:"" },
+{ name:"HARUNA", group:"Billlie", nationality:"日本", birthYear:"2006", debutYear:"2021", imageUrl:"" },
+
+{ name:"YEEUN", group:"UNCHILD", nationality:"韓國", birthYear:"2006", debutYear:"2026", imageUrl:"" },
+{ name:"HEEKIE", group:"UNCHILD", nationality:"韓國", birthYear:"2007", debutYear:"2026", imageUrl:"" },
+{ name:"TINA", group:"UNCHILD", nationality:"中國", birthYear:"2008", debutYear:"2026", imageUrl:"" },
+{ name:"AKO", group:"UNCHILD", nationality:"日本", birthYear:"2008", debutYear:"2026", imageUrl:"" },
+{ name:"EVON", group:"UNCHILD", nationality:"韓國", birthYear:"2008", debutYear:"2026", imageUrl:"" },
+{ name:"HAEUN", group:"UNCHILD", nationality:"韓國", birthYear:"2009", debutYear:"2026", imageUrl:"" },
+
+{ name:"Kuk Chorok", group:"OURBIRTHDAY", nationality:"韓國", birthYear:"2005", debutYear:"2026", imageUrl:"" },
+{ name:"Shin Hyewon", group:"OURBIRTHDAY", nationality:"韓國", birthYear:"2005", debutYear:"2026", imageUrl:"" },
+{ name:"Cho Hyejin", group:"OURBIRTHDAY", nationality:"韓國", birthYear:"2007", debutYear:"2026", imageUrl:"" },
+{ name:"U", group:"OURBIRTHDAY", nationality:"日本", birthYear:"2008", debutYear:"2026", imageUrl:"" },
+{ name:"BABY", group:"OURBIRTHDAY", nationality:"台灣", birthYear:"2009", debutYear:"2026", imageUrl:"" },
+{ name:"ACHIRAYA", group:"OURBIRTHDAY", nationality:"泰國", birthYear:"2009", debutYear:"2026", imageUrl:"" },
+{ name:"KILALA", group:"OURBIRTHDAY", nationality:"日本", birthYear:"2010", debutYear:"2026", imageUrl:"" },
+
+].map(i => ({ name: i.name, group: i.group, birthYear: i.birthYear || "", debutYear: i.debutYear || "", nationality: i.nationality, imageUrl: i.imageUrl || "" }));
 
 // ==================== Firebase 固定設定（房主已內建，所有玩家共用同一個雲端資料庫） ====================
 const HARDCODED_FIREBASE_CONFIG = {
@@ -1106,11 +1205,12 @@ function renderLobby(isHost) {
                 <input type="text" id="newIdolBirth" placeholder="出生年" style="width:80px">
                 <input type="text" id="newIdolDebut" placeholder="出道年" style="width:80px">
                 <input type="text" id="newIdolNationality" placeholder="國籍" style="width:80px">
+                <input type="text" id="newIdolImage" placeholder="圖片網址（選填）" style="width:160px">
                 <button class="btn btn-secondary btn-sm" id="addIdolBtn">➕ 新增偶像</button>
             </div>
             <details style="margin-top:14px;">
-                <summary style="cursor:pointer; color:#ccc;">批次匯入（CSV：姓名,團體,出生年,出道年,國籍，一行一筆）</summary>
-                <textarea id="csvImport" rows="5" placeholder="Wonyoung,IVE,2004,2021,韓國"></textarea>
+                <summary style="cursor:pointer; color:#ccc;">批次匯入（CSV：姓名,團體,出生年,出道年,國籍,圖片網址，一行一筆，圖片網址可留空）</summary>
+                <textarea id="csvImport" rows="5" placeholder="Wonyoung,IVE,2004,2021,韓國,https://example.com/wonyoung.jpg"></textarea>
                 <div class="row"><button class="btn btn-secondary btn-sm" id="csvImportBtn">匯入 / 更新</button></div>
             </details>
 
@@ -1132,10 +1232,11 @@ function renderIdolEditorTable() {
             <td><input type="text" data-idx="${idx}" data-field="birthYear" value="${i.birthYear || ""}"></td>
             <td><input type="text" data-idx="${idx}" data-field="debutYear" value="${i.debutYear || ""}"></td>
             <td><input type="text" data-idx="${idx}" data-field="nationality" value="${i.nationality || ""}"></td>
+            <td><input type="text" data-idx="${idx}" data-field="imageUrl" value="${(i.imageUrl || "").replace(/"/g, "&quot;")}" placeholder="圖片網址"></td>
             <td><button class="icon-btn" data-delidol="${idx}">刪除</button></td>
         </tr>`).join("");
     return `<div style="max-height:340px; overflow:auto;">
-        <table class="editor"><tr><th>名字</th><th>團體</th><th>出生年</th><th>出道年</th><th>國籍</th><th></th></tr>${rows}</table>
+        <table class="editor"><tr><th>名字</th><th>團體</th><th>出生年</th><th>出道年</th><th>國籍</th><th>圖片網址</th><th></th></tr>${rows}</table>
     </div>
     <div class="row" style="margin-top:8px;"><button class="btn btn-secondary btn-sm" id="saveIdolTableBtn">💾 儲存資料庫變更</button></div>`;
 }
@@ -1214,7 +1315,8 @@ function bindLobby(isHost) {
             alert("出生年或出道年格式不正確（例如非數字或明顯不合理，如500、1300），已自動清空該欄位。");
         }
         const nationality = document.getElementById("newIdolNationality").value.trim();
-        saveIdolPool(room.idolPool.concat([{ name, group, birthYear, debutYear, nationality }]));
+        const imageUrl = document.getElementById("newIdolImage").value.trim();
+        saveIdolPool(room.idolPool.concat([{ name, group, birthYear, debutYear, nationality, imageUrl }]));
     };
     document.getElementById("csvImportBtn").onclick = () => {
         const text = document.getElementById("csvImport").value.trim();
@@ -1222,14 +1324,14 @@ function bindLobby(isHost) {
         let pool = room.idolPool.map(i => ({ ...i }));
         let invalidCount = 0;
         text.split("\n").map(l => l.trim()).filter(Boolean).forEach(line => {
-            const [name, group, birthRaw = "", debutRaw = "", nationality = ""] = line.split(",").map(s => s.trim());
+            const [name, group, birthRaw = "", debutRaw = "", nationality = "", imageUrl = ""] = line.split(",").map(s => s.trim());
             if (!name || !group) return;
             const birthYear = sanitizeYearInput(birthRaw);
             const debutYear = sanitizeYearInput(debutRaw);
             if ((birthRaw !== "" && birthYear === "") || (debutRaw !== "" && debutYear === "")) invalidCount++;
             const existing = pool.find(i => i.name === name && i.group === group);
-            if (existing) { existing.birthYear = birthYear; existing.debutYear = debutYear; existing.nationality = nationality; }
-            else pool.push({ name, group, birthYear, debutYear, nationality });
+            if (existing) { existing.birthYear = birthYear; existing.debutYear = debutYear; existing.nationality = nationality; existing.imageUrl = imageUrl; }
+            else pool.push({ name, group, birthYear, debutYear, nationality, imageUrl });
         });
         if (invalidCount > 0) alert(`偵測到 ${invalidCount} 筆年份格式不正確（例如非數字或明顯不合理，如500、1300），已自動清空。`);
         saveIdolPool(pool);
@@ -1291,6 +1393,11 @@ function idolTooltip(idol) {
     return `出生年：${b}　出道年：${d}　國籍：${n}`;
 }
 
+function idolHoverAttrs(idol) {
+    const esc = s => String(s || "").replace(/"/g, "&quot;");
+    return `data-idol-hover="1" data-hover-name="${esc(idol.name)}" data-hover-group="${esc(idol.group)}" data-hover-birth="${esc(idol.birthYear || "未知")}" data-hover-debut="${esc(idol.debutYear || "未知")}" data-hover-nat="${esc(idol.nationality || "未知")}" data-hover-img="${esc(idol.imageUrl || "")}"`;
+}
+
 function renderIdolPoolHtml() {
     let html = "<h2 style=\"font-size:18px;\">🎤 偶像選秀池</h2>";
     html += `<div class="row" style="margin-bottom:8px;">
@@ -1327,14 +1434,14 @@ function renderIdolPoolHtml() {
     groupKeys.forEach(g => {
         const isExpanded = forceExpand || expandedGroup === g;
         if (!isExpanded) return;
-        const members = groups[g].slice().sort((a, b) => naturalCompare(a.name, b.name));
+        const members = groups[g];
         html += `<div class="member-grid">`;
         members.forEach(idol => {
             const taken = isIdolTaken(idol);
             const restricted = !taken && (isRestrictedByRules(idol) || isBlockedForPlayer(idol, clientId) || isGroupCapReached(idol, clientId));
             const disabled = taken || restricted || !myTurn;
             const cls = taken ? "taken" : (restricted ? "restricted" : "");
-            html += `<button class="idol-btn ${cls}" title="${idolTooltip(idol)}" data-pick="${idol.name}|${idol.group}" ${disabled ? "disabled" : ""}>${idol.name}</button>`;
+            html += `<button class="idol-btn ${cls}" ${idolHoverAttrs(idol)} data-pick="${idol.name}|${idol.group}" ${disabled ? "disabled" : ""}>${idol.name}</button>`;
         });
         html += `</div>`;
     });
@@ -1378,6 +1485,17 @@ function renderDraftAreaHtml() {
         html += `<button class="btn btn-secondary" id="finishTurnBtn" ${canFinish ? "" : "disabled"}>${label}</button>`;
     }
     html += renderDraftBoardHtml();
+    html += renderPlayerExportButtons();
+    return html;
+}
+
+function renderPlayerExportButtons() {
+    let html = `<div style="margin-top:14px;"><h4 style="margin:0 0 8px; color:#ccc; font-size:14px;">📤 個人選秀結果匯出</h4><div class="row">`;
+    room.players.forEach(p => {
+        const has = p.team.length > 0;
+        html += `<button class="btn btn-ghost btn-sm" data-exportplayer="${p.id}" ${has ? "" : "disabled"} title="${has ? "" : "尚未選任何人"}">📤 匯出 ${p.name} 的結果</button>`;
+    });
+    html += `</div></div>`;
     return html;
 }
 
@@ -1467,7 +1585,11 @@ function bindGame(isHost) {
     document.getElementById("cancelPickBtn")?.addEventListener("click", cancelPick);
     document.getElementById("finishTurnBtn")?.addEventListener("click", finishTurn);
     document.getElementById("leaveBtn")?.addEventListener("click", leaveRoom);
-    document.getElementById("downloadResultsBtn")?.addEventListener("click", downloadDraftResults);
+    document.getElementById("downloadResultsBtn")?.addEventListener("click", e => downloadDraftResults(e.currentTarget));
+    document.querySelectorAll("[data-exportplayer]").forEach(b => b.addEventListener("click", e => {
+        const player = room.players.find(p => p.id === b.dataset.exportplayer);
+        exportPlayerResultImage(player, e.currentTarget);
+    }));
 
     const searchInput = document.getElementById("idolSearchInput");
     if (searchInput) {
@@ -1482,30 +1604,189 @@ function bindGame(isHost) {
     }
 }
 
-// ==================== 下載選秀結果 ====================
-function downloadDraftResults() {
-    if (room.status !== "finished") return;
-    const lines = [];
-    lines.push("KPOP IDOL DRAFT 選秀結果");
-    lines.push(`房號：${roomCode}`);
-    lines.push(`時間：${new Date().toLocaleString()}`);
-    lines.push("");
-    room.players.forEach(p => {
-        lines.push(`👤 ${p.name}`);
-        if (p.team.length === 0) lines.push("  （無）");
-        else p.team.forEach((idol, idx) => lines.push(`  ${idx + 1}. ${idol.name} (${idol.group})`));
-        lines.push("");
+// ==================== 匯出選秀結果（圖片） ====================
+
+// 載入圖片，設定 crossOrigin 讓圖片來源允許時可以正常匯出成 canvas 圖片
+function loadImageEl(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("圖片載入失敗：" + src));
+        img.src = src;
     });
-    const text = lines.join("\n");
-    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `選秀結果_${roomCode}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+}
+
+// 以「填滿裁切（cover）」的方式把圖片畫進指定的矩形範圍
+function drawImageCover(ctx, img, x, y, w, h) {
+    const scale = Math.max(w / img.width, h / img.height);
+    const sw = w / scale, sh = h / scale;
+    const sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
+    ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+// 沒有圖片、或圖片載入失敗時的預留位置方塊
+function drawPlaceholderBox(ctx, x, y, w, h) {
+    ctx.fillStyle = "#2a2a3a";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "#444";
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = "#666";
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("尚無圖片", x + w / 2, y + h / 2);
+}
+
+// 嘗試載入某位偶像的圖片；失敗或沒有網址時回傳 null（呼叫端改畫預留位置）
+async function tryLoadIdolImage(idol) {
+    if (!idol || !idol.imageUrl) return null;
+    try { return await loadImageEl(idol.imageUrl); }
+    catch (e) { return null; }
+}
+
+// 排列順序：第1輪放最中間，之後偶數輪往右擴、奇數輪往左擴（例如5輪時左到右是 5,3,1,2,4）
+function pickOffsetFromCenter(round) {
+    if (round === 1) return 0;
+    if (round % 2 === 0) return round / 2;
+    return -((round - 1) / 2);
+}
+
+function triggerCanvasDownload(canvas, filename) {
+    canvas.toBlob(blob => {
+        if (!blob) { alert("圖片產生失敗，可能是圖片來源不允許匯出（跨網域限制）。"); return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, "image/png");
+}
+
+// 個人選秀結果：把該玩家選到的成員圖片排成一張橫圖，順序依照「第1輪置中、往外展開」排列
+async function exportPlayerResultImage(player, btn) {
+    if (!player || !player.team.length) { alert(`${player ? player.name : ""} 目前還沒有選任何人`); return; }
+    if (btn) { btn.disabled = true; btn.textContent = "產生中..."; }
+    try {
+        const cellW = 200, imgH = 200, labelH = 56, headerH = 60, pad = 16;
+        const n = player.team.length;
+        const canvas = document.createElement("canvas");
+        canvas.width = n * cellW + pad * 2;
+        canvas.height = headerH + imgH + labelH + pad;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#12121c";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ff69b4";
+        ctx.font = "bold 26px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText(`${player.name} 的選秀結果`, canvas.width / 2, 40);
+
+        const ordered = player.team
+            .map((idol, idx) => ({ idol, round: idx + 1, offset: pickOffsetFromCenter(idx + 1) }))
+            .sort((a, b) => a.offset - b.offset);
+
+        for (let i = 0; i < ordered.length; i++) {
+            const { idol, round } = ordered[i];
+            const x = pad + i * cellW;
+            const y = headerH;
+            const imgEl = await tryLoadIdolImage(idol);
+            if (imgEl) drawImageCover(ctx, imgEl, x + 10, y, cellW - 20, imgH);
+            else drawPlaceholderBox(ctx, x + 10, y, cellW - 20, imgH);
+
+            ctx.fillStyle = "#ffd700";
+            ctx.font = "bold 12px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText(`第${round}輪`, x + 14, y + 18);
+
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 15px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(idol.name, x + cellW / 2, y + imgH + 24);
+            ctx.fillStyle = "#aaa";
+            ctx.font = "12px sans-serif";
+            ctx.fillText(`(${idol.group})`, x + cellW / 2, y + imgH + 44);
+        }
+
+        triggerCanvasDownload(canvas, `${player.name}_選秀結果.png`);
+    } catch (e) {
+        alert("匯出失敗：" + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "📤 匯出我的結果"; }
+    }
+}
+
+// 全體選秀結果：整個 Draft Board 版面（輪次 × 玩家）繪成一張圖片，取代原本的文字檔匯出
+async function downloadDraftResults(btn) {
+    if (room.status !== "finished") return;
+    if (btn) { btn.disabled = true; btn.textContent = "產生中..."; }
+    try {
+        const players = room.players;
+        const rounds = room.draftBoard;
+        const cellW = 140, cellH = 150, thumb = 84, roundColW = 64, headerH = 70, rowHeaderH = 34, pad = 16;
+        const canvas = document.createElement("canvas");
+        canvas.width = roundColW + players.length * cellW + pad * 2;
+        canvas.height = headerH + rowHeaderH + rounds.length * cellH + pad;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#12121c";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ff69b4";
+        ctx.font = "bold 24px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`選秀結果`, canvas.width / 2, 34);
+        ctx.fillStyle = "#999";
+        ctx.font = "12px sans-serif";
+        ctx.fillText(new Date().toLocaleString(), canvas.width / 2, 54);
+
+        const headerY = headerH + rowHeaderH;
+        ctx.fillStyle = "#ba55d3";
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillText("輪次", pad + roundColW / 2, headerY - 10);
+        players.forEach((p, ci) => {
+            const x = pad + roundColW + ci * cellW + cellW / 2;
+            ctx.fillStyle = "#fff";
+            ctx.fillText(p.name, x, headerY - 10);
+        });
+
+        for (let ri = 0; ri < rounds.length; ri++) {
+            const round = rounds[ri];
+            const rowY = headerY + ri * cellH;
+            ctx.fillStyle = "#ccc";
+            ctx.font = "bold 16px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(String(ri + 1), pad + roundColW / 2, rowY + cellH / 2);
+
+            for (let ci = 0; ci < players.length; ci++) {
+                const p = players[ci];
+                const val = round.picks[p.id];
+                const x = pad + roundColW + ci * cellW;
+                if (val === "FINISHED") {
+                    ctx.fillStyle = "#3ecf6b";
+                    ctx.font = "13px sans-serif";
+                    ctx.fillText("已結束指名", x + cellW / 2, rowY + cellH / 2);
+                } else if (val) {
+                    const idol = findIdolByLabel(val);
+                    const imgX = x + (cellW - thumb) / 2;
+                    const imgY = rowY + 8;
+                    const imgEl = idol ? await tryLoadIdolImage(idol) : null;
+                    if (imgEl) drawImageCover(ctx, imgEl, imgX, imgY, thumb, thumb);
+                    else drawPlaceholderBox(ctx, imgX, imgY, thumb, thumb);
+                    ctx.fillStyle = "#fff";
+                    ctx.font = "12px sans-serif";
+                    ctx.fillText(idol ? idol.name : val, x + cellW / 2, imgY + thumb + 18);
+                }
+            }
+        }
+
+        triggerCanvasDownload(canvas, `選秀結果_${roomCode}.png`);
+    } catch (e) {
+        alert("匯出失敗：" + e.message);
+    } finally {
+        if (btn) { btn.disabled = room.status !== "finished"; btn.textContent = "📥 下載選秀結果"; }
+    }
 }
 
 // ==================== 退出房間 ====================
@@ -1581,6 +1862,68 @@ async function leaveRoom() {
     });
     goHome();
 }
+
+// ==================== 成員懸浮資料卡（事件代理，只綁定一次，不受 render() 重繪影響） ====================
+(function setupIdolHoverCard() {
+    const card = document.getElementById("idolHoverCard");
+    if (!card) return;
+
+    function renderCardContent(el) {
+        const name = el.dataset.hoverName || "";
+        const group = el.dataset.hoverGroup || "";
+        const birth = el.dataset.hoverBirth || "未知";
+        const debut = el.dataset.hoverDebut || "未知";
+        const nat = el.dataset.hoverNat || "未知";
+        const img = el.dataset.hoverImg || "";
+        const imgHtml = img
+            ? `<img class="ihc-img" src="${img}" alt="${name}" onerror="this.outerHTML='<div class=&quot;ihc-noimg&quot;>尚無圖片</div>'">`
+            : `<div class="ihc-noimg">尚無圖片</div>`;
+        card.innerHTML = `<ul class="ihc-list">
+            <li>${name}</li>
+            <li>所屬團體：${group}</li>
+            <li>國籍：${nat}</li>
+            <li>出生年：${birth}</li>
+            <li>出道年：${debut}</li>
+        </ul>${imgHtml}`;
+    }
+
+    function positionCard(x, y) {
+        const margin = 16;
+        const cardW = 300, cardH = 110; // 概略估計，避免溢出畫面邊界
+        let left = x + margin;
+        let top = y + margin;
+        if (left + cardW > window.innerWidth) left = x - cardW - margin;
+        if (top + cardH > window.innerHeight) top = y - cardH - margin;
+        card.style.left = Math.max(4, left) + "px";
+        card.style.top = Math.max(4, top) + "px";
+    }
+
+    document.addEventListener("mouseover", e => {
+        const el = e.target.closest('[data-idol-hover="1"]');
+        if (!el) return;
+        renderCardContent(el);
+        card.classList.add("show");
+        positionCard(e.clientX, e.clientY);
+    });
+    document.addEventListener("mousemove", e => {
+        if (card.classList.contains("show")) positionCard(e.clientX, e.clientY);
+    });
+    document.addEventListener("mouseout", e => {
+        const el = e.target.closest('[data-idol-hover="1"]');
+        if (el) card.classList.remove("show");
+    });
+    // 手機等無滑鼠裝置：點擊時短暫顯示，避免卡片卡住不消失
+    document.addEventListener("touchstart", e => {
+        const el = e.target.closest('[data-idol-hover="1"]');
+        if (!el) { card.classList.remove("show"); return; }
+        renderCardContent(el);
+        card.classList.add("show");
+        const touch = e.touches[0];
+        if (touch) positionCard(touch.clientX, touch.clientY);
+        clearTimeout(card._hideTimer);
+        card._hideTimer = setTimeout(() => card.classList.remove("show"), 2500);
+    }, { passive: true });
+})();
 
 // ==================== 啟動 ====================
 tryStartFirebase();
