@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FANTASY KPOP GIRL GROUPS</title>
+<title>KPOP IDOL DRAFT 選秀</title>
 <style>
 :root {
     --primary: #ff69b4;
@@ -52,19 +52,27 @@ textarea { width: 100%; font-family: monospace; }
 
 /* 備選區：團體/成員行列式（網格）排列 */
 .group-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap:8px; margin-bottom: 6px; }
-.group-btn { background:#2a2a3a; border:1px solid var(--line); border-radius:10px; padding:7px 8px; cursor:pointer; color:#eee; font-size:15px; font-weight:700; text-align:center; transition: all .12s; overflow-wrap: break-word; word-break: break-word; }
+.group-btn {
+    background:#2a2a3a; border:1px solid var(--line); border-radius:10px; padding:7px 6px; cursor:pointer; color:#eee;
+    text-align:center; transition: all .12s;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    width:100%; overflow:hidden;
+}
+.group-btn .gb-name { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.group-btn .gb-count { font-size:11px; color:#aaa; }
+.group-btn.expanded { background: var(--primary); color:#1a0018; }
+.group-btn.expanded .gb-count { color:#4a0033; }
 .group-btn:hover { background:#33334a; }
-.group-btn.expanded { background: var(--primary); color:#1a0018; font-weight:700; }
 .group-btn.taken { background:#242430; border-color:#444; color:#666; text-decoration: line-through; }
 .group-btn.taken:hover { background:#242430; }
 .group-btn.restricted { background:#3a1220; border-color: var(--danger); color:#ff8fa3; }
 .group-btn.restricted:hover { background:#3a1220; }
 .member-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap:8px; margin: 14px 0 16px; padding: 10px; background:#1a1a28; border-radius:10px; }
 .idol-btn {
-    padding: 11px 8px; border-radius: 8px; border: none;
+    padding: 11px 6px; border-radius: 8px; border: none;
     background: #2a2a3a; color: white; cursor: pointer; transition: all .15s;
-    font-size: 13px; font-weight: 600; width: 100%;
-    overflow-wrap: break-word; word-break: break-word; white-space: normal;
+    font-weight: 600; width: 100%;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .idol-btn:hover:not(:disabled) { background: var(--primary); transform: scale(1.05); }
 .idol-btn:disabled { opacity: .35; cursor: not-allowed; }
@@ -211,25 +219,21 @@ let expandedGroup = null; // 備選區目前展開的團體（同時只會有一
 
 // ==================== 偶像預設資料 ====================
 const BASE_IDOLS = [
-
 { name:"Gaeul", group:"IVE", nationality:"韓國", birthYear:"2002", debutYear:"2021", imageUrl:"" },
 { name:"Yujin", group:"IVE", nationality:"韓國", birthYear:"2003", debutYear:"2021", imageUrl:"" },
 { name:"Rei", group:"IVE", nationality:"日本", birthYear:"2004", debutYear:"2021", imageUrl:"" },
 { name:"Wonyoung", group:"IVE", nationality:"韓國", birthYear:"2004", debutYear:"2021", imageUrl:"" },
 { name:"Liz", group:"IVE", nationality:"韓國", birthYear:"2004", debutYear:"2021", imageUrl:"" },
 { name:"Leeseo", group:"IVE", nationality:"韓國", birthYear:"2007", debutYear:"2021", imageUrl:"" },
-
 { name:"Sakura", group:"LE SSERAFIM", nationality:"日本", birthYear:"1998", debutYear:"2022", imageUrl:"" },
 { name:"Chaewon", group:"LE SSERAFIM", nationality:"韓國", birthYear:"2000", debutYear:"2022", imageUrl:"" },
 { name:"Yunjin", group:"LE SSERAFIM", nationality:"韓國/美國", birthYear:"2001", debutYear:"2022", imageUrl:"" },
 { name:"Kazuha", group:"LE SSERAFIM", nationality:"日本", birthYear:"2003", debutYear:"2022", imageUrl:"" },
 { name:"Eunchae", group:"LE SSERAFIM", nationality:"韓國", birthYear:"2006", debutYear:"2022", imageUrl:"" },
-
 { name:"Karina", group:"aespa", nationality:"韓國", birthYear:"2000", debutYear:"2020", imageUrl:"" },
 { name:"Giselle", group:"aespa", nationality:"日本/韓國", birthYear:"2000", debutYear:"2020", imageUrl:"" },
 { name:"Winter", group:"aespa", nationality:"韓國", birthYear:"2001", debutYear:"2020", imageUrl:"" },
 { name:"NingNing", group:"aespa", nationality:"中國", birthYear:"2002", debutYear:"2020", imageUrl:"" },
-
 { name:"Nayeon", group:"TWICE", nationality:"韓國", birthYear:"1995", debutYear:"2015", imageUrl:"" },
 { name:"Jeongyeon", group:"TWICE", nationality:"韓國", birthYear:"1996", debutYear:"2015", imageUrl:"" },
 { name:"Momo", group:"TWICE", nationality:"日本", birthYear:"1996", debutYear:"2015", imageUrl:"" },
@@ -239,33 +243,28 @@ const BASE_IDOLS = [
 { name:"Dahyun", group:"TWICE", nationality:"韓國", birthYear:"1998", debutYear:"2015", imageUrl:"" },
 { name:"Chaeyoung", group:"TWICE", nationality:"韓國", birthYear:"1999", debutYear:"2015", imageUrl:"" },
 { name:"Tzuyu", group:"TWICE", nationality:"台灣", birthYear:"1999", debutYear:"2015", imageUrl:"" },
-
 { name:"Yeji", group:"ITZY", nationality:"韓國", birthYear:"2000", debutYear:"2019", imageUrl:"" },
 { name:"Lia", group:"ITZY", nationality:"韓國", birthYear:"2000", debutYear:"2019", imageUrl:"" },
 { name:"Ryujin", group:"ITZY", nationality:"韓國", birthYear:"2001", debutYear:"2019", imageUrl:"" },
 { name:"Chaeryeong", group:"ITZY", nationality:"韓國", birthYear:"2001", debutYear:"2019", imageUrl:"" },
 { name:"Yuna", group:"ITZY", nationality:"韓國", birthYear:"2003", debutYear:"2019", imageUrl:"" },
-
 { name:"Lily", group:"NMIXX", nationality:"韓國/澳洲", birthYear:"2002", debutYear:"2022", imageUrl:"" },
 { name:"Haewon", group:"NMIXX", nationality:"韓國", birthYear:"2003", debutYear:"2022", imageUrl:"" },
 { name:"Sullyoon", group:"NMIXX", nationality:"韓國", birthYear:"2004", debutYear:"2022", imageUrl:"" },
 { name:"Bae", group:"NMIXX", nationality:"韓國", birthYear:"2004", debutYear:"2022", imageUrl:"" },
 { name:"Jiwoo", group:"NMIXX", nationality:"韓國", birthYear:"2005", debutYear:"2022", imageUrl:"" },
 { name:"Kyujin", group:"NMIXX", nationality:"韓國", birthYear:"2006", debutYear:"2022", imageUrl:"" },
-
 { name:"Hayoung", group:"fromis_9", nationality:"韓國", birthYear:"1997", debutYear:"2018", imageUrl:"" },
 { name:"Jiwon", group:"fromis_9", nationality:"韓國", birthYear:"1998", debutYear:"2018", imageUrl:"" },
 { name:"Chaeyoung", group:"fromis_9", nationality:"韓國", birthYear:"2000", debutYear:"2018", imageUrl:"" },
 { name:"Nagyung", group:"fromis_9", nationality:"韓國", birthYear:"2000", debutYear:"2018", imageUrl:"" },
 { name:"Jiheon", group:"fromis_9", nationality:"韓國", birthYear:"2003", debutYear:"2018", imageUrl:"" },
-
 { name:"Sumin", group:"STAYC", nationality:"韓國", birthYear:"2001", debutYear:"2020", imageUrl:"" },
 { name:"Sieun", group:"STAYC", nationality:"韓國", birthYear:"2001", debutYear:"2020", imageUrl:"" },
 { name:"Isa", group:"STAYC", nationality:"韓國", birthYear:"2002", debutYear:"2020", imageUrl:"" },
 { name:"Seeun", group:"STAYC", nationality:"韓國", birthYear:"2003", debutYear:"2020", imageUrl:"" },
 { name:"Yoon", group:"STAYC", nationality:"韓國", birthYear:"2004", debutYear:"2020", imageUrl:"" },
 { name:"J", group:"STAYC", nationality:"韓國", birthYear:"2004", debutYear:"2020", imageUrl:"" },
-
 { name:"Carmen", group:"Hearts2Hearts", nationality:"印尼", birthYear:"2006", debutYear:"2025", imageUrl:"" },
 { name:"Jiwoo", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
 { name:"Yuha", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
@@ -274,42 +273,35 @@ const BASE_IDOLS = [
 { name:"A-na", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2008", debutYear:"2025", imageUrl:"" },
 { name:"Ian", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2009", debutYear:"2025", imageUrl:"" },
 { name:"Ye-on", group:"Hearts2Hearts", nationality:"韓國", birthYear:"2010", debutYear:"2025", imageUrl:"" },
-
 { name:"Woni", group:"RESCENE", nationality:"韓國", birthYear:"2004", debutYear:"2024", imageUrl:"" },
 { name:"Liv", group:"RESCENE", nationality:"韓國", birthYear:"2006", debutYear:"2024", imageUrl:"" },
 { name:"Minami", group:"RESCENE", nationality:"日本", birthYear:"2006", debutYear:"2024", imageUrl:"" },
 { name:"May", group:"RESCENE", nationality:"韓國", birthYear:"2008", debutYear:"2024", imageUrl:"" },
 { name:"Zena", group:"RESCENE", nationality:"韓國", birthYear:"2008", debutYear:"2024", imageUrl:"" },
-
 { name:"Keena", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2002", debutYear:"2022", imageUrl:"" },
 { name:"ChanelleMoon", group:"FIFTY FIFTY", nationality:"韓國/美國", birthYear:"2003", debutYear:"2022", imageUrl:"" },
 { name:"Yewon", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2005", debutYear:"2022", imageUrl:"" },
 { name:"Hana", group:"FIFTY FIFTY", nationality:"韓國", birthYear:"2006", debutYear:"2022", imageUrl:"" },
 { name:"Athena", group:"FIFTY FIFTY", nationality:"韓國/瑞典", birthYear:"2007", debutYear:"2022", imageUrl:"" },
-
 { name:"Leesol", group:"KiiiKiii", nationality:"韓國", birthYear:"2005", debutYear:"2025", imageUrl:"" },
 { name:"Sui", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
 { name:"Jiyu", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
 { name:"Haum", group:"KiiiKiii", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
 { name:"Kya", group:"KiiiKiii", nationality:"韓國", birthYear:"2010", debutYear:"2025", imageUrl:"" },
-
 { name:"JULIE", group:"KISS OF LIFE", nationality:"韓國/美國", birthYear:"2000", debutYear:"2023", imageUrl:"" },
 { name:"NATTY", group:"KISS OF LIFE", nationality:"泰國", birthYear:"2002", debutYear:"2023", imageUrl:"" },
 { name:"BELLE", group:"KISS OF LIFE", nationality:"韓國/美國", birthYear:"2004", debutYear:"2023", imageUrl:"" },
 { name:"HANEUL", group:"KISS OF LIFE", nationality:"韓國", birthYear:"2005", debutYear:"2023", imageUrl:"" },
-
 { name:"Yunah", group:"ILLIT", nationality:"韓國", birthYear:"2004", debutYear:"2024", imageUrl:"" },
 { name:"Minju", group:"ILLIT", nationality:"韓國", birthYear:"2004", debutYear:"2024", imageUrl:"" },
 { name:"Moka", group:"ILLIT", nationality:"日本", birthYear:"2004", debutYear:"2024", imageUrl:"" },
 { name:"Wonhee", group:"ILLIT", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
 { name:"Iroha", group:"ILLIT", nationality:"日本", birthYear:"2008", debutYear:"2024", imageUrl:"" },
-
 { name:"Miyeon", group:"i-dle", nationality:"韓國", birthYear:"1997", debutYear:"2018", imageUrl:"" },
 { name:"Minnie", group:"i-dle", nationality:"泰國", birthYear:"1997", debutYear:"2018", imageUrl:"" },
 { name:"Seoyeon", group:"i-dle", nationality:"韓國", birthYear:"1998", debutYear:"2018", imageUrl:"" },
 { name:"Yuqi", group:"i-dle", nationality:"中國", birthYear:"1999", debutYear:"2018", imageUrl:"" },
 { name:"Shuhwa", group:"i-dle", nationality:"台灣", birthYear:"2000", debutYear:"2018", imageUrl:"" },
-
 { name:"SeoYeon", group:"tripleS", nationality:"韓國", birthYear:"2003", debutYear:"2023", imageUrl:"" },
 { name:"HyeRin", group:"tripleS", nationality:"韓國", birthYear:"2007", debutYear:"2023", imageUrl:"" },
 { name:"JiWoo", group:"tripleS", nationality:"韓國", birthYear:"2005", debutYear:"2023", imageUrl:"" },
@@ -334,37 +326,31 @@ const BASE_IDOLS = [
 { name:"Sullin", group:"tripleS", nationality:"泰國", birthYear:"2006", debutYear:"2023", imageUrl:"" },
 { name:"SeoAh", group:"tripleS", nationality:"韓國", birthYear:"2010", debutYear:"2023", imageUrl:"" },
 { name:"JiYeon", group:"tripleS", nationality:"韓國", birthYear:"2004", debutYear:"2023", imageUrl:"" },
-
 { name:"MAI", group:"izna", nationality:"日本", birthYear:"2004", debutYear:"2024", imageUrl:"" },
 { name:"BANG JEE MIN", group:"izna", nationality:"韓國", birthYear:"2005", debutYear:"2024", imageUrl:"" },
 { name:"KOKO", group:"izna", nationality:"日本", birthYear:"2006", debutYear:"2024", imageUrl:"" },
 { name:"RYU SA RANG", group:"izna", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
 { name:"CHOI JUNG EUN", group:"izna", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
 { name:"JEONG SAE BI", group:"izna", nationality:"韓國", birthYear:"2008", debutYear:"2024", imageUrl:"" },
-
 { name:"Sooin", group:"MEOVV", nationality:"韓國", birthYear:"2005", debutYear:"2024", imageUrl:"" },
 { name:"Gawon", group:"MEOVV", nationality:"韓國/美國", birthYear:"2005", debutYear:"2024", imageUrl:"" },
 { name:"Anna", group:"MEOVV", nationality:"日本", birthYear:"2005", debutYear:"2024", imageUrl:"" },
 { name:"Narin", group:"MEOVV", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
 { name:"Ella", group:"MEOVV", nationality:"韓國/美國", birthYear:"2008", debutYear:"2024", imageUrl:"" },
-
 { name:"Choi Yu Jin", group:"Kep1er", nationality:"韓國", birthYear:"1996", debutYear:"2022", imageUrl:"" },
 { name:"Shen Xiao Ting", group:"Kep1er", nationality:"中國", birthYear:"1999", debutYear:"2022", imageUrl:"" },
 { name:"Kim Chae Hyun", group:"Kep1er", nationality:"韓國", birthYear:"2002", debutYear:"2022", imageUrl:"" },
 { name:"Kim Da Yeon", group:"Kep1er", nationality:"韓國", birthYear:"2003", debutYear:"2022", imageUrl:"" },
 { name:"Ezaki Hikaru", group:"Kep1er", nationality:"日本", birthYear:"2004", debutYear:"2022", imageUrl:"" },
 { name:"Huening Bahiyyih", group:"Kep1er", nationality:"韓國/美國", birthYear:"2004", debutYear:"2022", imageUrl:"" },
-
 { name:"MASHIRO", group:"MADEIN", nationality:"日本", birthYear:"1999", debutYear:"2024", imageUrl:"" },
 { name:"MiU", group:"MADEIN", nationality:"日本", birthYear:"2003", debutYear:"2024", imageUrl:"" },
 { name:"SERINA", group:"MADEIN", nationality:"日本", birthYear:"2006", debutYear:"2024", imageUrl:"" },
 { name:"NAGOMI", group:"MADEIN", nationality:"日本", birthYear:"2007", debutYear:"2024", imageUrl:"" },
-
 { name:"Seoi", group:"H1-KEY", nationality:"韓國", birthYear:"2000", debutYear:"2022", imageUrl:"" },
 { name:"Riina", group:"H1-KEY", nationality:"韓國", birthYear:"2001", debutYear:"2022", imageUrl:"" },
 { name:"Hwiseo", group:"H1-KEY", nationality:"韓國", birthYear:"2002", debutYear:"2022", imageUrl:"" },
 { name:"Yel", group:"H1-KEY", nationality:"韓國", birthYear:"2004", debutYear:"2022", imageUrl:"" },
-
 { name:"Yeowon", group:"USPEER", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
 { name:"Soee", group:"USPEER", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
 { name:"Sian", group:"USPEER", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
@@ -372,7 +358,6 @@ const BASE_IDOLS = [
 { name:"Daon", group:"USPEER", nationality:"韓國", birthYear:"2008", debutYear:"2025", imageUrl:"" },
 { name:"Chaena", group:"USPEER", nationality:"韓國", birthYear:"2009", debutYear:"2025", imageUrl:"" },
 { name:"Roa", group:"USPEER", nationality:"韓國", birthYear:"2009", debutYear:"2025", imageUrl:"" },
-
 { name:"HITOMI", group:"SAY MY NAME", nationality:"日本", birthYear:"2001", debutYear:"2024", imageUrl:"" },
 { name:"SHUIE", group:"SAY MY NAME", nationality:"中國", birthYear:"2004", debutYear:"2024", imageUrl:"" },
 { name:"MEI", group:"SAY MY NAME", nationality:"日本", birthYear:"2005", debutYear:"2024", imageUrl:"" },
@@ -381,7 +366,6 @@ const BASE_IDOLS = [
 { name:"DOHEE", group:"SAY MY NAME", nationality:"韓國", birthYear:"2006", debutYear:"2024", imageUrl:"" },
 { name:"JUNHWI", group:"SAY MY NAME", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
 { name:"SEUNGJOO", group:"SAY MY NAME", nationality:"韓國", birthYear:"2010", debutYear:"2024", imageUrl:"" },
-
 { name:"Ruka", group:"BABYMONSTER", nationality:"日本", birthYear:"2002", debutYear:"2024", imageUrl:"" },
 { name:"Pharita", group:"BABYMONSTER", nationality:"泰國", birthYear:"2005", debutYear:"2024", imageUrl:"" },
 { name:"Asa", group:"BABYMONSTER", nationality:"日本", birthYear:"2006", debutYear:"2024", imageUrl:"" },
@@ -389,7 +373,6 @@ const BASE_IDOLS = [
 { name:"Rami", group:"BABYMONSTER", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
 { name:"Rora", group:"BABYMONSTER", nationality:"韓國", birthYear:"2008", debutYear:"2024", imageUrl:"" },
 { name:"Chiquita", group:"BABYMONSTER", nationality:"泰國", birthYear:"2009", debutYear:"2024", imageUrl:"" },
-
 { name:"Lim Na Young", group:"I.O.I", nationality:"韓國", birthYear:"1995", debutYear:"2016", imageUrl:"" },
 { name:"Kim Chung Ha", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1996", debutYear:"2016", imageUrl:"" },
 { name:"Kim Se Jeong", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1996", debutYear:"2016", imageUrl:"" },
@@ -401,14 +384,12 @@ const BASE_IDOLS = [
 { name:"Kim Do Yeon", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2016", imageUrl:"" },
 { name:"Kang Mi Na", group:"I.O.I", nationality:"韓國", birthYear:"1999", debutYear:"2016", imageUrl:"" },
 { name:"Jeon So Mi", group:"I.O.I/SOLO", nationality:"韓國", birthYear:"2001", debutYear:"2016", imageUrl:"" },
-
 { name:"Hyojung", group:"OH MY GIRL", nationality:"韓國", birthYear:"1994", debutYear:"2015", imageUrl:"" },
 { name:"Mimi", group:"OH MY GIRL", nationality:"韓國", birthYear:"1995", debutYear:"2015", imageUrl:"" },
 { name:"YooA", group:"OH MY GIRL", nationality:"韓國", birthYear:"1995", debutYear:"2015", imageUrl:"" },
 { name:"Seunghee", group:"OH MY GIRL", nationality:"韓國", birthYear:"1996", debutYear:"2015", imageUrl:"" },
 { name:"Yubin", group:"OH MY GIRL", nationality:"韓國", birthYear:"1997", debutYear:"2015", imageUrl:"" },
 { name:"Arin", group:"OH MY GIRL", nationality:"韓國", birthYear:"1999", debutYear:"2015", imageUrl:"" },
-
 { name:"SeolA", group:"WJSN", nationality:"韓國", birthYear:"1994", debutYear:"2016", imageUrl:"" },
 { name:"Bona", group:"WJSN", nationality:"韓國", birthYear:"1995", debutYear:"2016", imageUrl:"" },
 { name:"Exy", group:"WJSN", nationality:"韓國", birthYear:"1995", debutYear:"2016", imageUrl:"" },
@@ -418,37 +399,31 @@ const BASE_IDOLS = [
 { name:"Eunseo", group:"WJSN", nationality:"韓國", birthYear:"1998", debutYear:"2016", imageUrl:"" },
 { name:"Yeoreum", group:"WJSN", nationality:"韓國", birthYear:"1999", debutYear:"2016", imageUrl:"" },
 { name:"Dayoung", group:"WJSN/SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2016", imageUrl:"" },
-
 { name:"Choi Yena", group:"SOLO", nationality:"韓國", birthYear:"1999", debutYear:"2022", imageUrl:"" },
 { name:"Kwon Eunbi", group:"SOLO", nationality:"韓國", birthYear:"1995", debutYear:"2021", imageUrl:"" },
 { name:"Lee ChaeYeon", group:"SOLO", nationality:"韓國", birthYear:"2000", debutYear:"2022", imageUrl:"" },
 { name:"Jo YuRi", group:"SOLO", nationality:"韓國", birthYear:"2001", debutYear:"2021", imageUrl:"" },
 { name:"GYUBIN", group:"SOLO", nationality:"韓國", birthYear:"2006", debutYear:"2024", imageUrl:"" },
-
 { name:"JinSoul", group:"ARTMS", nationality:"韓國", birthYear:"1997", debutYear:"2024", imageUrl:"" },
 { name:"HaSeul", group:"ARTMS", nationality:"韓國", birthYear:"1997", debutYear:"2024", imageUrl:"" },
 { name:"Kim Lip", group:"ARTMS", nationality:"韓國", birthYear:"1999", debutYear:"2024", imageUrl:"" },
 { name:"HeeJin", group:"ARTMS", nationality:"韓國", birthYear:"2000", debutYear:"2024", imageUrl:"" },
 { name:"Choerry", group:"ARTMS", nationality:"韓國", birthYear:"2001", debutYear:"2024", imageUrl:"" },
-
 { name:"MAIKA", group:"ODD YOUTH", nationality:"日本", birthYear:"2005", debutYear:"2024", imageUrl:"" },
 { name:"MYAH", group:"ODD YOUTH", nationality:"韓國/美國", birthYear:"2006", debutYear:"2024", imageUrl:"" },
 { name:"KANIE", group:"ODD YOUTH", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
 { name:"SUMMER", group:"ODD YOUTH", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
 { name:"YE EUM", group:"ODD YOUTH", nationality:"韓國", birthYear:"2007", debutYear:"2024", imageUrl:"" },
-
 { name:"Park Cho Rong", group:"Apink", nationality:"韓國", birthYear:"1991", debutYear:"2011", imageUrl:"" },
 { name:"Yoon Bo Mi", group:"Apink", nationality:"韓國", birthYear:"1993", debutYear:"2011", imageUrl:"" },
 { name:"Jeong Eun Ji", group:"Apink", nationality:"韓國", birthYear:"1993", debutYear:"2011", imageUrl:"" },
 { name:"Kim Nam Joo", group:"Apink", nationality:"韓國", birthYear:"1995", debutYear:"2011", imageUrl:"" },
 { name:"Oh Ha Young", group:"Apink", nationality:"韓國", birthYear:"1996", debutYear:"2011", imageUrl:"" },
-
 { name:"Irene", group:"Red Velvet", nationality:"韓國", birthYear:"1991", debutYear:"2014", imageUrl:"" },
 { name:"Seulgi", group:"Red Velvet", nationality:"韓國", birthYear:"1994", debutYear:"2014", imageUrl:"" },
 { name:"Wendy", group:"Red Velvet", nationality:"韓國", birthYear:"1994", debutYear:"2014", imageUrl:"" },
 { name:"Joy", group:"Red Velvet", nationality:"韓國", birthYear:"1996", debutYear:"2014", imageUrl:"" },
 { name:"Yeri", group:"Red Velvet", nationality:"韓國", birthYear:"1999", debutYear:"2014", imageUrl:"" },
-
 { name:"Michi", group:"AtHeart", nationality:"日本/美國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
 { name:"Arin", group:"AtHeart", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
 { name:"Katelyn", group:"AtHeart", nationality:"菲律賓", birthYear:"2007", debutYear:"2025", imageUrl:"" },
@@ -456,27 +431,23 @@ const BASE_IDOLS = [
 { name:"Seohyeon", group:"AtHeart", nationality:"韓國", birthYear:"2008", debutYear:"2025", imageUrl:"" },
 { name:"Aurora", group:"AtHeart", nationality:"日本", birthYear:"2009", debutYear:"2025", imageUrl:"" },
 { name:"Nahyun", group:"AtHeart", nationality:"韓國", birthYear:"2009", debutYear:"2025", imageUrl:"" },
-
 { name:"Won Hwayeon", group:"ifeye", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
 { name:"Taerin", group:"ifeye", nationality:"韓國", birthYear:"2006", debutYear:"2025", imageUrl:"" },
 { name:"Rahee", group:"ifeye", nationality:"韓國", birthYear:"2007", debutYear:"2025", imageUrl:"" },
 { name:"Kasia", group:"ifeye", nationality:"韓國", birthYear:"2008", debutYear:"2025", imageUrl:"" },
 { name:"Meu", group:"ifeye", nationality:"韓國", birthYear:"2008", debutYear:"2025", imageUrl:"" },
 { name:"Sasha", group:"ifeye", nationality:"韓國", birthYear:"2009", debutYear:"2025", imageUrl:"" },
-
 { name:"SANGAH", group:"LIGHTSUM", nationality:"韓國", birthYear:"2002", debutYear:"2021", imageUrl:"" },
 { name:"CHOWON", group:"LIGHTSUM", nationality:"韓國", birthYear:"2002", debutYear:"2021", imageUrl:"" },
 { name:"NAYOUNG", group:"LIGHTSUM", nationality:"韓國", birthYear:"2002", debutYear:"2021", imageUrl:"" },
 { name:"HINA", group:"LIGHTSUM", nationality:"日本", birthYear:"2003", debutYear:"2021", imageUrl:"" },
 { name:"JUHYEON", group:"LIGHTSUM", nationality:"韓國", birthYear:"2004", debutYear:"2021", imageUrl:"" },
 { name:"YUJEONG", group:"LIGHTSUM", nationality:"韓國", birthYear:"2004", debutYear:"2021", imageUrl:"" },
-
 { name:"Sunhye", group:"YOUNG POSSE", nationality:"韓國", birthYear:"2004", debutYear:"2023", imageUrl:"" },
 { name:"Yeonjung", group:"YOUNG POSSE", nationality:"韓國", birthYear:"2004", debutYear:"2023", imageUrl:"" },
 { name:"Jiana", group:"YOUNG POSSE", nationality:"韓國", birthYear:"2006", debutYear:"2023", imageUrl:"" },
 { name:"Doeun", group:"YOUNG POSSE", nationality:"韓國", birthYear:"2007", debutYear:"2023", imageUrl:"" },
 { name:"Jieun", group:"YOUNG POSSE", nationality:"韓國", birthYear:"2009", debutYear:"2023", imageUrl:"" },
-
 { name:"MOON SUA", group:"Billlie", nationality:"韓國", birthYear:"1999", debutYear:"2021", imageUrl:"" },
 { name:"SUHYEON", group:"Billlie", nationality:"韓國", birthYear:"2000", debutYear:"2021", imageUrl:"" },
 { name:"HARAM", group:"Billlie", nationality:"韓國", birthYear:"2001", debutYear:"2021", imageUrl:"" },
@@ -484,22 +455,19 @@ const BASE_IDOLS = [
 { name:"SHEON", group:"Billlie", nationality:"韓國", birthYear:"2003", debutYear:"2021", imageUrl:"" },
 { name:"SIYOON", group:"Billlie", nationality:"韓國", birthYear:"2005", debutYear:"2021", imageUrl:"" },
 { name:"HARUNA", group:"Billlie", nationality:"日本", birthYear:"2006", debutYear:"2021", imageUrl:"" },
-
 { name:"YEEUN", group:"UNCHILD", nationality:"韓國", birthYear:"2006", debutYear:"2026", imageUrl:"" },
 { name:"HEEKIE", group:"UNCHILD", nationality:"韓國", birthYear:"2007", debutYear:"2026", imageUrl:"" },
 { name:"TINA", group:"UNCHILD", nationality:"中國", birthYear:"2008", debutYear:"2026", imageUrl:"" },
 { name:"AKO", group:"UNCHILD", nationality:"日本", birthYear:"2008", debutYear:"2026", imageUrl:"" },
 { name:"EVON", group:"UNCHILD", nationality:"韓國", birthYear:"2008", debutYear:"2026", imageUrl:"" },
 { name:"HAEUN", group:"UNCHILD", nationality:"韓國", birthYear:"2009", debutYear:"2026", imageUrl:"" },
-
 { name:"Kuk Chorok", group:"OURBIRTHDAY", nationality:"韓國", birthYear:"2005", debutYear:"2026", imageUrl:"" },
 { name:"Shin Hyewon", group:"OURBIRTHDAY", nationality:"韓國", birthYear:"2005", debutYear:"2026", imageUrl:"" },
 { name:"Cho Hyejin", group:"OURBIRTHDAY", nationality:"韓國", birthYear:"2007", debutYear:"2026", imageUrl:"" },
 { name:"U", group:"OURBIRTHDAY", nationality:"日本", birthYear:"2008", debutYear:"2026", imageUrl:"" },
 { name:"BABY", group:"OURBIRTHDAY", nationality:"台灣", birthYear:"2009", debutYear:"2026", imageUrl:"" },
 { name:"ACHIRAYA", group:"OURBIRTHDAY", nationality:"泰國", birthYear:"2009", debutYear:"2026", imageUrl:"" },
-{ name:"KILALA", group:"OURBIRTHDAY", nationality:"日本", birthYear:"2010", debutYear:"2026", imageUrl:"" },
-
+{ name:"KILALA", group:"OURBIRTHDAY", nationality:"日本", birthYear:"2010", debutYear:"2026", imageUrl:"" }
 ].map(i => ({ name: i.name, group: i.group, birthYear: i.birthYear || "", debutYear: i.debutYear || "", nationality: i.nationality, imageUrl: i.imageUrl || "" }));
 
 // ==================== Firebase 固定設定（房主已內建，所有玩家共用同一個雲端資料庫） ====================
@@ -1398,6 +1366,14 @@ function idolHoverAttrs(idol) {
     return `data-idol-hover="1" data-hover-name="${esc(idol.name)}" data-hover-group="${esc(idol.group)}" data-hover-birth="${esc(idol.birthYear || "未知")}" data-hover-debut="${esc(idol.debutYear || "未知")}" data-hover-nat="${esc(idol.nationality || "未知")}" data-hover-img="${esc(idol.imageUrl || "")}"`;
 }
 
+// 依文字長度估算合適字級，避免長名字超出按鈕範圍；短文字維持最大字級，長文字按比例縮小到最小字級為止
+function fitTextFontSize(text, maxSize, minSize, charsAtMax) {
+    const len = String(text || "").length;
+    if (len <= charsAtMax) return maxSize;
+    const size = Math.round(maxSize * (charsAtMax / len));
+    return Math.max(minSize, Math.min(maxSize, size));
+}
+
 function renderIdolPoolHtml() {
     let html = "<h2 style=\"font-size:18px;\">🎤 偶像選秀池</h2>";
     html += `<div class="row" style="margin-bottom:8px;">
@@ -1427,7 +1403,11 @@ function renderIdolPoolHtml() {
             isRestrictedByRules(idol) || isBlockedForPlayer(idol, clientId) || isGroupCapReached(idol, clientId)
         );
         const stateCls = allTaken ? "taken" : (allRestricted ? "restricted" : "");
-        html += `<button class="group-btn ${isExpanded ? "expanded" : ""} ${stateCls}" data-togglegroup="${g}">${g} (${members.length})</button>`;
+        const groupFontSize = fitTextFontSize(g, 15, 9, 8);
+        html += `<button class="group-btn ${isExpanded ? "expanded" : ""} ${stateCls}" data-togglegroup="${g}">
+            <span class="gb-name" style="font-size:${groupFontSize}px;">${g}</span>
+            <span class="gb-count">(${members.length})</span>
+        </button>`;
     });
     html += `</div>`;
 
@@ -1441,7 +1421,8 @@ function renderIdolPoolHtml() {
             const restricted = !taken && (isRestrictedByRules(idol) || isBlockedForPlayer(idol, clientId) || isGroupCapReached(idol, clientId));
             const disabled = taken || restricted || !myTurn;
             const cls = taken ? "taken" : (restricted ? "restricted" : "");
-            html += `<button class="idol-btn ${cls}" ${idolHoverAttrs(idol)} data-pick="${idol.name}|${idol.group}" ${disabled ? "disabled" : ""}>${idol.name}</button>`;
+            const memberFontSize = fitTextFontSize(idol.name, 13, 9, 8);
+            html += `<button class="idol-btn ${cls}" style="font-size:${memberFontSize}px;" ${idolHoverAttrs(idol)} data-pick="${idol.name}|${idol.group}" ${disabled ? "disabled" : ""}>${idol.name}</button>`;
         });
         html += `</div>`;
     });
