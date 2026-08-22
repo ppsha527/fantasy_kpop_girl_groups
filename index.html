@@ -499,6 +499,7 @@ function tryStartFirebase() {
         initFirebase(cfg);
         setConnStatus("ok", "✅ 已連接雲端資料庫");
         if (roomCode) listenRoom(roomCode); else render();
+        sweepStaleRooms(); // 背景自動清理長時間沒有動靜的廢棄房間，不阻塞畫面
     } catch (e) {
         setConnStatus("err", "⚠️ Firebase 設定有誤：" + e.message);
         render();
@@ -507,6 +508,34 @@ function tryStartFirebase() {
 function setConnStatus(cls, text) {
     const el = document.getElementById("connStatus");
     el.className = cls; el.textContent = text;
+}
+
+// ==================== 自動清理廢棄房間 ====================
+// 沒有後端伺服器，所以無法偵測「關分頁」這種被動離開；改用「距離上次有人互動已經過多久」來判斷房間是否已廢棄。
+// 每個瀏覽器最多每隔 SWEEP_THROTTLE_MS 嘗試掃描一次，避免每次開網頁都去查整個資料庫。
+const STALE_ROOM_MS = 24 * 60 * 60 * 1000;   // 超過 24 小時沒有任何互動，視為廢棄房間
+const SWEEP_THROTTLE_MS = 60 * 60 * 1000;    // 同一瀏覽器每小時最多掃描一次
+const LS_LAST_SWEEP = "kpopDraft_lastSweep";
+
+async function sweepStaleRooms() {
+    try {
+        const lastSweep = parseInt(localStorage.getItem(LS_LAST_SWEEP) || "0");
+        if (Date.now() - lastSweep < SWEEP_THROTTLE_MS) return;
+        localStorage.setItem(LS_LAST_SWEEP, String(Date.now()));
+
+        const cutoff = Date.now() - STALE_ROOM_MS;
+        const snap = await db.collection("kpopDraftRooms").where("lastActivity", "<", cutoff).limit(20).get();
+        if (snap.empty) return;
+        const deletions = [];
+        snap.forEach(doc => {
+            if (doc.id === roomCode) return; // 保險起見，絕不刪除自己目前正在看的房間
+            deletions.push(doc.ref.delete());
+        });
+        await Promise.all(deletions);
+    } catch (e) {
+        // 清理失敗不影響遊戲本身，靜默記錄即可
+        console.warn("自動清理廢棄房間時發生錯誤：", e);
+    }
 }
 
 // ==================== Firestore 房間操作 ====================
@@ -543,6 +572,7 @@ async function createRoom(hostName) {
     const data = {
         hostId: clientId,
         createdAt: Date.now(),
+        lastActivity: Date.now(), // 最後一次有人互動的時間，用來判斷房間是否已廢棄
         status: "lobby",
         settings: {
             draftMode: "normal", minRounds: 2,
@@ -576,22 +606,22 @@ async function joinRoom(name) {
         if (r.players.some(p => p.id === clientId)) return; // 已在房內（重新整理）
         if (r.status !== "lobby") throw new Error("遊戲已開始，無法加入");
         const players = r.players.concat([{ id: clientId, name, team: [] }]);
-        t.update(ref, { players });
+        t.update(ref, { players, lastActivity: Date.now() });
     });
 }
 
 async function updateSettings(patch) {
-    await roomRef(roomCode).update({ settings: { ...room.settings, ...patch } });
+    await roomRef(roomCode).update({ settings: { ...room.settings, ...patch }, lastActivity: Date.now() });
 }
 
 async function saveIdolPool(pool) {
-    await roomRef(roomCode).update({ idolPool: pool });
+    await roomRef(roomCode).update({ idolPool: pool, lastActivity: Date.now() });
 }
 
 async function shufflePlayers() {
     const arr = room.players.slice();
     for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
-    await roomRef(roomCode).update({ players: arr });
+    await roomRef(roomCode).update({ players: arr, lastActivity: Date.now() });
 }
 
 async function movePlayerOrder(playerId, direction) {
@@ -601,11 +631,11 @@ async function movePlayerOrder(playerId, direction) {
     if (newIdx < 0 || newIdx >= room.players.length) return;
     const arr = room.players.slice();
     [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
-    await roomRef(roomCode).update({ players: arr });
+    await roomRef(roomCode).update({ players: arr, lastActivity: Date.now() });
 }
 
 async function removePlayer(id) {
-    await roomRef(roomCode).update({ players: room.players.filter(p => p.id !== id) });
+    await roomRef(roomCode).update({ players: room.players.filter(p => p.id !== id), lastActivity: Date.now() });
 }
 
 // ---- 純邏輯（回合順序 / 蛇形選秀），已於本地測試驗證 ----
@@ -722,7 +752,7 @@ async function startGame() {
     let { draftBoard, done } = ensureCurrentRound([], room.players, [], room.settings.draftMode);
     if (done) { alert("沒有玩家可以開始遊戲"); return; }
     const resolvedRules = resolveRules(room.settings, room.idolPool);
-    await roomRef(roomCode).update({ status: "playing", draftBoard, finishedPlayerIds: [], resolvedRules });
+    await roomRef(roomCode).update({ status: "playing", draftBoard, finishedPlayerIds: [], resolvedRules, lastActivity: Date.now() });
 }
 
 function pickIdol(idol) {
@@ -767,7 +797,7 @@ async function confirmPick() {
             idolGroup: idol.group,
             until: Date.now() + 3000
         };
-        t.update(ref, { players, draftBoard: ensured.draftBoard, status, lastReveal });
+        t.update(ref, { players, draftBoard: ensured.draftBoard, status, lastReveal, lastActivity: Date.now() });
     });
     render();
 }
@@ -792,7 +822,7 @@ async function finishTurn() {
         let draftBoard = applyPickToBoard(r.draftBoard, clientId, "FINISHED");
         let ensured = ensureCurrentRound(draftBoard, r.players, finishedPlayerIds, r.settings.draftMode);
         let status = ensured.done ? "finished" : "playing";
-        t.update(ref, { finishedPlayerIds, draftBoard: ensured.draftBoard, status });
+        t.update(ref, { finishedPlayerIds, draftBoard: ensured.draftBoard, status, lastActivity: Date.now() });
     });
 }
 
@@ -1799,7 +1829,8 @@ async function leaveRoom() {
                 draftBoard: [],
                 finishedPlayerIds: [],
                 resolvedRules: null,
-                lastReveal: null
+                lastReveal: null,
+                lastActivity: Date.now()
             });
         });
         // 不呼叫 goHome()：房主仍留在這個房間裡，畫面會透過即時同步自然轉回大廳畫面
@@ -1839,7 +1870,7 @@ async function leaveRoom() {
             status = ensured.done ? "finished" : "playing";
         }
 
-        t.update(ref, { hostId, players, finishedPlayerIds, draftBoard, status });
+        t.update(ref, { hostId, players, finishedPlayerIds, draftBoard, status, lastActivity: Date.now() });
     });
     goHome();
 }
