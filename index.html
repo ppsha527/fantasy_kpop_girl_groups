@@ -82,7 +82,16 @@ textarea { width: 100%; font-family: monospace; }
 .idol-btn.restricted:hover { background:#3a1220; transform:none; }
 .idol-btn.restricted::after { content: " ❌"; }
 
-/* 成員懸浮資料卡：左邊條列式基本資料，右邊圖片 */
+/* 隨機抽團模式：3張團體卡片，圖片在上、團名在下 */
+.group-draw-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:14px; margin-top:12px; }
+.group-draw-card {
+    background:#22222f; border:1px solid var(--line); border-radius:14px; padding:14px;
+    display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center;
+}
+.group-draw-card .gdc-img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px; background:#2a2a3a; }
+.group-draw-card .gdc-noimg { width:100%; aspect-ratio:1/1; border-radius:10px; background:#2a2a3a; display:flex; align-items:center; justify-content:center; color:#666; font-size:12px; }
+.group-draw-card .gdc-name { font-weight:800; font-size:16px; color:var(--primary); }
+
 .idol-hover-card {
     position: fixed; z-index: 300; display: none;
     background: #1c1c2c; border: 1px solid var(--line); border-radius: 12px;
@@ -169,7 +178,7 @@ table.editor input { width: 100%; padding: 6px 8px; font-size: 13px; }
 </style>
 </head>
 <body>
-<h1>🎤 FANTASY KPOP GIRL GROUPS 選秀</h1>
+<h1>🎤 FANTASY KPOP GIRL GROUPS</h1>
 <div id="connStatus"></div>
 <div id="app"></div>
 <div id="idolHoverCard" class="idol-hover-card"></div>
@@ -216,6 +225,8 @@ let localPendingPick = null;  // 我正在考慮的選擇，純本地狀態，�
 let idolSearchQuery = "";     // 選秀名單搜尋框的關鍵字，純本地狀態
 let idolSearchFocused = false; // 用來在重新渲染後恢復搜尋框的游標焦點
 let expandedGroup = null; // 備選區目前展開的團體（同時只會有一個），純本地狀態
+let localChosenGroupForDraw = null; // 隨機抽團模式：這一手我選定要從哪個團體挑成員，純本地狀態
+let groupDrawRequestInFlight = false; // 避免同一時間重複送出「產生抽團結果」的交易
 
 // ==================== 偶像預設資料 ====================
 const BASE_IDOLS = [
@@ -468,7 +479,60 @@ const BASE_IDOLS = [
 { name:"BABY", group:"OURBIRTHDAY", nationality:"台灣", birthYear:"2009", debutYear:"2026", imageUrl:"" },
 { name:"ACHIRAYA", group:"OURBIRTHDAY", nationality:"泰國", birthYear:"2009", debutYear:"2026", imageUrl:"" },
 { name:"KILALA", group:"OURBIRTHDAY", nationality:"日本", birthYear:"2010", debutYear:"2026", imageUrl:"" }
+{ name:"SEOHEE", group:"TUIDE", nationality:"韓國", birthYear:"2006", debutYear:"2026", imageUrl:"" }
+{ name:"SEOYEON", group:"TUIDE", nationality:"韓國", birthYear:"2008", debutYear:"2026", imageUrl:"" }
+{ name:"ELENA", group:"TUIDE", nationality:"美國", birthYear:"2008", debutYear:"2026", imageUrl:"" }
+{ name:"JIA", group:"TUIDE", nationality:"韓國/美國", birthYear:"2008", debutYear:"2026", imageUrl:"" }
+{ name:"SAKI", group:"TUIDE", nationality:"日本", birthYear:"2010", debutYear:"2026", imageUrl:"" }
+{ name:"SEAH", group:"TUIDE", nationality:"韓國", birthYear:"2011", debutYear:"2026", imageUrl:"" }
+{ name:"YI HANI", group:"TUIDE", nationality:"韓國/英國", birthYear:"2011", debutYear:"2026", imageUrl:"" }
 ].map(i => ({ name: i.name, group: i.group, birthYear: i.birthYear || "", debutYear: i.debutYear || "", nationality: i.nationality, imageUrl: i.imageUrl || "" }));
+
+// ==================== 團體 Logo（直接在程式碼裡填網址即可，不用進大廳UI設定）====================
+// 每個團體對應一個Logo/代表圖片網址，隨機抽團模式的卡片會用這裡的圖。留空會顯示「尚無圖片」。
+// 新建立的房間會自動帶入這裡目前的內容當作預設值；已存在的房間仍可在大廳「團體Logo」表格個別覆蓋調整。
+const GROUP_LOGOS = {
+  "aespa": "",
+  "Apink": "",
+  "ARTMS": "",
+  "AtHeart": "",
+  "BABYMONSTER": "",
+  "Billlie": "",
+  "FIFTY FIFTY": "",
+  "fromis_9": "",
+  "H1-KEY": "",
+  "Hearts2Hearts": "",
+  "i-dle": "",
+  "I.O.I": "",
+  "ifeye": "",
+  "ILLIT": "",
+  "ITZY": "",
+  "IVE": "",
+  "izna": "",
+  "Kep1er": "",
+  "KiiiKiii": "",
+  "KISS OF LIFE": "",
+  "LE SSERAFIM": "",
+  "LIGHTSUM": "",
+  "MADEIN": "",
+  "MEOVV": "",
+  "NMIXX": "",
+  "ODD YOUTH": "",
+  "OH MY GIRL": "",
+  "OURBIRTHDAY": "",
+  "Red Velvet": "",
+  "RESCENE": "",
+  "SAY MY NAME": "",
+  "SOLO": "",
+  "STAYC": "",
+  "tripleS": "",
+  "TUIDE": "",
+  "TWICE": "",
+  "UNCHILD": "",
+  "USPEER": "",
+  "WJSN": "",
+  "YOUNG POSSE": ""
+};
 
 // ==================== Firebase 固定設定（房主已內建，所有玩家共用同一個雲端資料庫） ====================
 const HARDCODED_FIREBASE_CONFIG = {
@@ -546,7 +610,7 @@ let roomClosedByHost = false;
 
 function listenRoom(code) {
     if (unsub) unsub();
-    everConnectedRoom = false; roomClosedByHost = false; localPendingPick = null; idolSearchQuery = ""; idolSearchFocused = false; expandedGroup = null;
+    everConnectedRoom = false; roomClosedByHost = false; localPendingPick = null; idolSearchQuery = ""; idolSearchFocused = false; expandedGroup = null; localChosenGroupForDraw = null; groupDrawRequestInFlight = false;
     setConnStatus("", "⏳ 連接房間中…");
     unsub = roomRef(code).onSnapshot(snap => {
         if (!snap.exists) {
@@ -576,13 +640,20 @@ async function createRoom(hostName) {
         status: "lobby",
         settings: {
             draftMode: "normal", minRounds: 2,
+            pickMode: "direct",        // direct(直接點選) | randomGroup(隨機抽團模式)
             birthRuleType: "none",     // none | scatter(隨機3~5年不連續) | rangeAround(隨機年份±1~2)
             debutRuleType: "none",     // none | scatter(隨機3年不連續) | rangeAround(隨機年份±1)
             nonKoreanRuleType: "none", // none | atLeastOne | onlyOne（房主直接指定）
-            groupRuleEnabled: false,   // 限制4：隨機3~10個團體不能選
-            groupCapRuleType: "none"   // 限制5：none | "1" | "2"，每個團體全場（不分玩家）最多可選人數
+            banRuleType: "none",       // 限制4（禁用團體）：none | fullyRandom | hostRandom | hostPick | banPhase
+            banCount: 3,               // hostRandom 模式：房主指定隨機禁用幾團（1~10）
+            banHostPicks: [],          // hostPick 模式：房主手動指定要禁用的團體清單（1~10個）
+            banPhaseType: "sequential",// banPhase 模式：sequential(依順位輪流) | simultaneous(同時盲選)
+            groupCapRuleType: "none"   // 限制5：none | "1" | "2"，每位玩家各自每個團體最多可選人數
         },
+        groupLogos: { ...GROUP_LOGOS }, // 團體圖卡的Logo圖片網址，預設帶入程式碼裡 GROUP_LOGOS 的內容，房主仍可在大廳個別覆蓋調整
         resolvedRules: null, // 開始選秀時才會產生的具體隨機結果，全房間共用同一份
+        currentGroupDraw: null, // 隨機抽團模式：目前這一手抽到的3個團體
+        banPhase: null, // 禁用團體「玩法二」進行中的狀態
         players: [{ id: clientId, name: hostName, team: [] }],
         idolPool: BASE_IDOLS,
         draftBoard: [],
@@ -616,6 +687,10 @@ async function updateSettings(patch) {
 
 async function saveIdolPool(pool) {
     await roomRef(roomCode).update({ idolPool: pool, lastActivity: Date.now() });
+}
+
+async function saveGroupLogos(logos) {
+    await roomRef(roomCode).update({ groupLogos: logos, lastActivity: Date.now() });
 }
 
 async function shufflePlayers() {
@@ -736,10 +811,20 @@ function resolveRules(settings, idolPool) {
     }
 
     let bannedGroups = [];
-    if (settings.groupRuleEnabled && groups.length) {
-        const count = Math.min(groups.length, 3 + Math.floor(Math.random() * 8)); // 3~10
+    if (settings.banRuleType === "fullyRandom" && groups.length) {
+        // 玩法：隨機禁1~10 — 數量本身也是隨機的，房主不用指定任何東西
+        const maxCount = Math.min(10, groups.length);
+        const count = 1 + Math.floor(Math.random() * maxCount);
         bannedGroups = sampleRandom(groups, count);
+    } else if (settings.banRuleType === "hostRandom" && groups.length) {
+        // 玩法：房主選擇系統隨機禁1~10個 — 房主指定數量，系統隨機挑團體
+        const count = Math.max(1, Math.min(10, parseInt(settings.banCount) || 3, groups.length));
+        bannedGroups = sampleRandom(groups, count);
+    } else if (settings.banRuleType === "hostPick") {
+        // 玩法：房主選擇禁哪1~10個 — 直接採用房主手動勾選的清單
+        bannedGroups = (settings.banHostPicks || []).filter(g => groups.includes(g));
     }
+    // banRuleType === "banPhase" 時，bannedGroups 由禁用階段流程另外決定，這裡先留空
 
     return {
         bannedBirthYears: bannedBirthYears.sort((a, b) => a - b),
@@ -751,8 +836,78 @@ function resolveRules(settings, idolPool) {
 async function startGame() {
     let { draftBoard, done } = ensureCurrentRound([], room.players, [], room.settings.draftMode);
     if (done) { alert("沒有玩家可以開始遊戲"); return; }
+
+    const withRerolls = room.settings.pickMode === "randomGroup"
+        ? room.players.map(p => ({ ...p, rerollsLeft: 3 }))
+        : room.players;
+
+    if (room.settings.banRuleType === "banPhase") {
+        // 玩法二：所有人先進入禁用階段，禁完才正式開始選秀
+        const banOrder = computeActiveOrder(room.players, [], 0, room.settings.draftMode);
+        await roomRef(roomCode).update({
+            status: "banning",
+            players: withRerolls,
+            banPhase: {
+                type: room.settings.banPhaseType,
+                order: banOrder,
+                bans: {} // playerId -> groupName
+            },
+            lastActivity: Date.now()
+        });
+        return;
+    }
+
     const resolvedRules = resolveRules(room.settings, room.idolPool);
-    await roomRef(roomCode).update({ status: "playing", draftBoard, finishedPlayerIds: [], resolvedRules, lastActivity: Date.now() });
+    await roomRef(roomCode).update({
+        status: "playing", draftBoard, players: withRerolls, finishedPlayerIds: [],
+        resolvedRules, currentGroupDraw: null, banPhase: null, lastActivity: Date.now()
+    });
+}
+
+// ==================== 限制4・禁用團體「玩法二：禁用階段」 ====================
+function getBanCurrentPlayerId(banPhase) {
+    if (!banPhase || banPhase.type !== "sequential") return null;
+    const bannedCount = Object.keys(banPhase.bans).length;
+    return banPhase.order[bannedCount] ?? null;
+}
+
+async function submitBan(groupName) {
+    await db.runTransaction(async t => {
+        const ref = roomRef(roomCode);
+        const snap = await t.get(ref);
+        const r = snap.data();
+        if (r.status !== "banning" || !r.banPhase) return;
+        const bp = r.banPhase;
+        if (bp.bans[clientId]) return; // 已經禁過了
+
+        if (bp.type === "sequential") {
+            if (getBanCurrentPlayerId(bp) !== clientId) return;
+            const alreadyBanned = Object.values(bp.bans);
+            if (alreadyBanned.includes(groupName)) return; // 依順位輪流模式看得到別人選什麼，不能重複禁同一團
+        }
+        // 同時盲選模式：玩家彼此看不到對方選了什麼，允許重複禁到同一團（這是正常現象，不擋掉）
+
+        const bans = { ...bp.bans, [clientId]: groupName };
+
+        if (Object.keys(bans).length >= r.players.length) {
+            // 所有人都禁完了，正式進入選秀
+            const bannedGroups = Array.from(new Set(Object.values(bans)));
+            const resolvedRules2 = resolveRules(r.settings, r.idolPool);
+            resolvedRules2.bannedGroups = bannedGroups;
+            const ensured = ensureCurrentRound([], r.players, [], r.settings.draftMode);
+            t.update(ref, {
+                status: "playing",
+                banPhase: { ...bp, bans },
+                draftBoard: ensured.draftBoard,
+                finishedPlayerIds: [],
+                resolvedRules: resolvedRules2,
+                currentGroupDraw: null,
+                lastActivity: Date.now()
+            });
+        } else {
+            t.update(ref, { banPhase: { ...bp, bans }, lastActivity: Date.now() });
+        }
+    });
 }
 
 function pickIdol(idol) {
@@ -772,6 +927,7 @@ async function confirmPick() {
     if (isRevealActive()) return;
     const idol = localPendingPick;
     localPendingPick = null;
+    localChosenGroupForDraw = null;
     await db.runTransaction(async t => {
         const ref = roomRef(roomCode);
         const snap = await t.get(ref);
@@ -797,7 +953,7 @@ async function confirmPick() {
             idolGroup: idol.group,
             until: Date.now() + 3000
         };
-        t.update(ref, { players, draftBoard: ensured.draftBoard, status, lastReveal, lastActivity: Date.now() });
+        t.update(ref, { players, draftBoard: ensured.draftBoard, status, lastReveal, currentGroupDraw: null, lastActivity: Date.now() });
     });
     render();
 }
@@ -822,7 +978,7 @@ async function finishTurn() {
         let draftBoard = applyPickToBoard(r.draftBoard, clientId, "FINISHED");
         let ensured = ensureCurrentRound(draftBoard, r.players, finishedPlayerIds, r.settings.draftMode);
         let status = ensured.done ? "finished" : "playing";
-        t.update(ref, { finishedPlayerIds, draftBoard: ensured.draftBoard, status, lastActivity: Date.now() });
+        t.update(ref, { finishedPlayerIds, draftBoard: ensured.draftBoard, status, currentGroupDraw: null, lastActivity: Date.now() });
     });
 }
 
@@ -868,6 +1024,82 @@ function isGroupCapReached(idol, playerId) {
     const counts = groupPickCounts(player.team);
     const myGroups = idolGroups(idol);
     return myGroups.some(g => (counts[g] || 0) >= cap);
+}
+
+// ==================== 隨機抽團模式（限制1/2/3不可與此模式並用） ====================
+// 判斷某個團體對「特定玩家」而言是否還可以選：團體整體被限制4禁用、團體所有成員都被選光、
+// 或因限制5（每人每團上限）導致這位玩家對這個團體已經沒有名額，都視為不可抽到
+function isGroupPickableForPlayer(groupName, playerId, r) {
+    r = r || room;
+    const members = r.idolPool.filter(i => idolGroups(i).includes(groupName));
+    if (members.length === 0) return false;
+    const rr = r.resolvedRules || { bannedGroups: [] };
+    if ((rr.bannedGroups || []).includes(groupName)) return false;
+    const allTaken = members.every(idol => r.players.some(p => p.team.some(t => t.name === idol.name && t.group === idol.group)));
+    if (allTaken) return false;
+    const cap = r.settings.groupCapRuleType && r.settings.groupCapRuleType !== "none" ? parseInt(r.settings.groupCapRuleType) : null;
+    if (cap !== null) {
+        const player = r.players.find(p => p.id === playerId);
+        const counts = groupPickCounts(player ? player.team : []);
+        if ((counts[groupName] || 0) >= cap) return false;
+    }
+    return true;
+}
+
+function eligibleGroupsForPlayer(playerId, r) {
+    r = r || room;
+    const allGroups = Array.from(new Set(r.idolPool.flatMap(i => idolGroups(i))));
+    return allGroups.filter(g => isGroupPickableForPlayer(g, playerId, r));
+}
+
+// 開始選秀當下呼叫，只有輪到自己而且還沒有抽卡結果時才會觸發，避免多個瀏覽器同時搶著寫入
+async function generateGroupDraw() {
+    if (groupDrawRequestInFlight) return;
+    groupDrawRequestInFlight = true;
+    try {
+        await db.runTransaction(async t => {
+            const ref = roomRef(roomCode);
+            const snap = await t.get(ref);
+            const r = snap.data();
+            if (r.status !== "playing") return;
+            if (getCurrentPlayerId(r.draftBoard) !== clientId) return;
+            if (r.currentGroupDraw) return; // 已經有人產生過了
+            const pool = eligibleGroupsForPlayer(clientId, r);
+            if (pool.length === 0) return; // 沒有任何團體可抽，畫面會顯示提示
+            const count = Math.min(3, pool.length);
+            const groups = sampleRandom(pool, count);
+            t.update(ref, { currentGroupDraw: { forPlayerId: clientId, groups }, lastActivity: Date.now() });
+        });
+    } finally {
+        groupDrawRequestInFlight = false;
+    }
+}
+
+async function rerollGroupCard(index) {
+    await db.runTransaction(async t => {
+        const ref = roomRef(roomCode);
+        const snap = await t.get(ref);
+        const r = snap.data();
+        if (r.status !== "playing") return;
+        if (getCurrentPlayerId(r.draftBoard) !== clientId) return;
+        if (!r.currentGroupDraw || r.currentGroupDraw.forPlayerId !== clientId) return;
+        const me = r.players.find(p => p.id === clientId);
+        if (!me || (me.rerollsLeft || 0) <= 0) return;
+        const pool = eligibleGroupsForPlayer(clientId, r);
+        if (pool.length === 0) return;
+        // 重抽允許抽到已經出現過的團體（含目前另外兩張卡），不做去重
+        const newGroup = pool[Math.floor(Math.random() * pool.length)];
+        const groups = r.currentGroupDraw.groups.slice();
+        groups[index] = newGroup;
+        const players = r.players.map(p => p.id === clientId ? { ...p, rerollsLeft: (p.rerollsLeft || 0) - 1 } : p);
+        t.update(ref, { currentGroupDraw: { forPlayerId: clientId, groups }, players, lastActivity: Date.now() });
+    });
+}
+
+function chooseGroupFromDraw(groupName) {
+    localChosenGroupForDraw = groupName;
+    expandedGroup = groupName;
+    render();
 }
 
 // 限制3・「只能一位非純韓籍」模式：這位玩家一旦選過1位非純韓籍成員，之後其餘非純韓籍成員這場都不能再選（只影響他自己）
@@ -926,6 +1158,7 @@ function render() {
     if (!me) { app.innerHTML = renderJoin(); bindJoin(); return; }
 
     if (room.status === "lobby") { app.innerHTML = renderLobby(isHost); bindLobby(isHost); return; }
+    if (room.status === "banning") { app.innerHTML = renderBanPhase(isHost); bindBanPhase(); return; }
     app.innerHTML = renderGame(isHost);
     bindGame(isHost);
     scheduleRevealRerender();
@@ -1026,7 +1259,7 @@ function renderHome() {
         <h2>🏠 建立新房間</h2>
         <div class="field">
             <label>你的名字</label>
-            <input type="text" id="hostName" placeholder="房主暱稱（限20字）" maxlength="20" value="${localStorage.getItem(LS_NAME) || ""}">
+            <input type="text" id="hostName" placeholder="房主暱稱（限20字）" value="${localStorage.getItem(LS_NAME) || ""}">
         </div>
         <div class="row"><button class="btn btn-primary btn-lg" id="createBtn">建立房間並取得邀請連結</button></div>
         <hr style="border-color:var(--line); margin:22px 0;">
@@ -1058,7 +1291,7 @@ function renderJoin() {
         <h2>🎫 加入房間 <span class="code-box">${roomCode}</span></h2>
         <div class="field">
             <label>你的名字</label>
-            <input type="text" id="joinName" placeholder="輸入你的暱稱（限20字）" maxlength="20" value="${localStorage.getItem(LS_NAME) || ""}">
+            <input type="text" id="joinName" placeholder="輸入你的暱稱（限20字）" value="${localStorage.getItem(LS_NAME) || ""}">
         </div>
         <div class="row"><button class="btn btn-primary btn-lg" id="joinBtn">加入遊戲</button></div>
     </div>`;
@@ -1089,7 +1322,10 @@ function renderLobbyRulesPreview() {
     if (s.nonKoreanRuleType === "atLeastOne") items.push("限制3：每人至少選1位非純韓籍才能結束");
     else if (s.nonKoreanRuleType === "onlyOne") items.push("限制3：每人最多選1位非純韓籍");
 
-    if (s.groupRuleEnabled) items.push("限制4：隨機3~10個團體不能選（含SOLO）");
+    if (s.banRuleType === "fullyRandom") items.push("限制4：全自動隨機禁用團體（數量與團體都隨機決定）");
+    else if (s.banRuleType === "hostRandom") items.push(`限制4：房主指定隨機禁用 ${s.banCount || 3} 個團體（含SOLO）`);
+    else if (s.banRuleType === "hostPick") items.push(`限制4：房主手動指定禁用 ${(s.banHostPicks || []).length} 個團體`);
+    else if (s.banRuleType === "banPhase") items.push(`限制4：選秀前進入禁用階段，每人禁1團（${s.banPhaseType === "simultaneous" ? "同時盲選" : "依順位輪流"}）`);
 
     if (s.groupCapRuleType === "1") items.push("限制5：每人每個團體最多選1位");
     else if (s.groupCapRuleType === "2") items.push("限制5：每人每個團體最多選2位");
@@ -1125,79 +1361,117 @@ function renderLobby(isHost) {
 
     html += renderLobbyRulesPreview();
 
-    if (isHost) {
+    {
+        const isRandomGroupMode = room.settings.pickMode === "randomGroup";
+        const dis = isHost ? "" : "disabled";
         html += `
         <div class="panel">
-            <h2>⚙️ 房主設定</h2>
+            <h2>⚙️ 房間設定${isHost ? "" : "（唯讀，只有房主能修改）"}</h2>
             <div class="row">
                 <div class="field"><label>選秀模式</label>
-                    <select id="draftModeSel">
+                    <select id="draftModeSel" ${dis}>
                         <option value="normal" ${room.settings.draftMode === "normal" ? "selected" : ""}>正常輪流</option>
                         <option value="snake" ${room.settings.draftMode === "snake" ? "selected" : ""}>蛇形選秀</option>
                     </select>
                 </div>
                 <div class="field"><label>每人至少選幾人才能結束</label>
-                    <input type="number" id="minRoundsInput" min="1" value="${room.settings.minRounds}" style="width:90px">
+                    <input type="number" id="minRoundsInput" min="1" value="${room.settings.minRounds}" style="width:90px" ${dis}>
                 </div>
-                <div class="field"><label>&nbsp;</label><button class="btn btn-ghost btn-sm" id="shuffleBtn">🔀 隨機排序玩家</button></div>
+                ${isHost ? `<div class="field"><label>&nbsp;</label><button class="btn btn-ghost btn-sm" id="shuffleBtn">🔀 隨機排序玩家</button></div>` : ""}
             </div>
+
+            <div class="field" style="margin-top:14px;">
+                <label><b>選人方式</b></label>
+                <select id="pickModeSel" ${dis}>
+                    <option value="direct" ${room.settings.pickMode === "direct" ? "selected" : ""}>直接點選（瀏覽所有團體與成員自由挑選）</option>
+                    <option value="randomGroup" ${room.settings.pickMode === "randomGroup" ? "selected" : ""}>隨機抽團（每回合隨機抽3團，選1團再選成員，全場3次重抽機會）</option>
+                </select>
+                <p class="hint" style="margin-top:4px;">選擇「隨機抽團」時，限制1、2、3（出生年/出道年/國籍）無法開啟，因為抽團模式在選人前看不到個別成員的年份與國籍。</p>
+            </div>
+
             <div id="wheelSettingsBox" style="margin-top:18px;">
                 <h3>選秀限制規則</h3>
-                <p class="hint">5項限制皆可獨立開關；具體結果在開始選秀時才決定並公告給所有人。</p>
+                <p class="hint">具體結果在開始選秀時才決定並公告給所有人。</p>
 
-                <div style="margin-top:10px;">
-                    <label class="inline"><input type="checkbox" id="birthEnabledChk" ${room.settings.birthRuleType !== "none" ? "checked" : ""}> <b>限制 1：出生年</b></label>
+                <div style="margin-top:10px; ${isRandomGroupMode ? "opacity:.4;" : ""}">
+                    <label class="inline"><input type="checkbox" id="birthEnabledChk" ${room.settings.birthRuleType !== "none" ? "checked" : ""} ${isRandomGroupMode || !isHost ? "disabled" : ""}> <b>限制 1：出生年</b>${isRandomGroupMode ? "（隨機抽團模式下無法開啟）" : ""}</label>
                 </div>
-                <div class="row" id="birthModeBox" style="margin-top:6px; ${room.settings.birthRuleType !== "none" ? "" : "display:none"}">
-                    <select id="birthRuleTypeSel">
+                <div class="row" id="birthModeBox" style="margin-top:6px; ${room.settings.birthRuleType !== "none" && !isRandomGroupMode ? "" : "display:none"}">
+                    <select id="birthRuleTypeSel" ${dis}>
                         <option value="scatter" ${room.settings.birthRuleType === "scatter" ? "selected" : ""}>隨機3~5年不能選（不連續）</option>
                         <option value="rangeAround" ${room.settings.birthRuleType === "rangeAround" ? "selected" : ""}>隨機一年±1~2年不能選</option>
                     </select>
                 </div>
 
-                <div style="margin-top:14px;">
-                    <label class="inline"><input type="checkbox" id="debutEnabledChk" ${room.settings.debutRuleType !== "none" ? "checked" : ""}> <b>限制 2：出道年</b></label>
+                <div style="margin-top:14px; ${isRandomGroupMode ? "opacity:.4;" : ""}">
+                    <label class="inline"><input type="checkbox" id="debutEnabledChk" ${room.settings.debutRuleType !== "none" ? "checked" : ""} ${isRandomGroupMode || !isHost ? "disabled" : ""}> <b>限制 2：出道年</b>${isRandomGroupMode ? "（隨機抽團模式下無法開啟）" : ""}</label>
                 </div>
-                <div class="row" id="debutModeBox" style="margin-top:6px; ${room.settings.debutRuleType !== "none" ? "" : "display:none"}">
-                    <select id="debutRuleTypeSel">
+                <div class="row" id="debutModeBox" style="margin-top:6px; ${room.settings.debutRuleType !== "none" && !isRandomGroupMode ? "" : "display:none"}">
+                    <select id="debutRuleTypeSel" ${dis}>
                         <option value="scatter" ${room.settings.debutRuleType === "scatter" ? "selected" : ""}>隨機3年不能選（不連續）</option>
                         <option value="rangeAround" ${room.settings.debutRuleType === "rangeAround" ? "selected" : ""}>隨機一年±1年不能選</option>
                     </select>
                 </div>
                 <p class="hint" style="margin-top:4px;">年份範圍自動取自資料庫既有的出生年/出道年。</p>
 
-                <div style="margin-top:14px;">
-                    <label class="inline"><input type="checkbox" id="nonKoreanEnabledChk" ${room.settings.nonKoreanRuleType !== "none" ? "checked" : ""}> <b>限制 3：國籍</b></label>
+                <div style="margin-top:14px; ${isRandomGroupMode ? "opacity:.4;" : ""}">
+                    <label class="inline"><input type="checkbox" id="nonKoreanEnabledChk" ${room.settings.nonKoreanRuleType !== "none" ? "checked" : ""} ${isRandomGroupMode || !isHost ? "disabled" : ""}> <b>限制 3：國籍</b>${isRandomGroupMode ? "（隨機抽團模式下無法開啟）" : ""}</label>
                 </div>
-                <div class="row" id="nonKoreanModeBox" style="margin-top:6px; ${room.settings.nonKoreanRuleType !== "none" ? "" : "display:none"}">
-                    <select id="nonKoreanRuleTypeSel">
+                <div class="row" id="nonKoreanModeBox" style="margin-top:6px; ${room.settings.nonKoreanRuleType !== "none" && !isRandomGroupMode ? "" : "display:none"}">
+                    <select id="nonKoreanRuleTypeSel" ${dis}>
                         <option value="atLeastOne" ${room.settings.nonKoreanRuleType === "atLeastOne" ? "selected" : ""}>每人至少選1位非純韓籍才能結束</option>
                         <option value="onlyOne" ${room.settings.nonKoreanRuleType === "onlyOne" ? "selected" : ""}>每人最多選1位非純韓籍</option>
                     </select>
                 </div>
 
                 <div style="margin-top:14px;">
-                    <label class="inline"><input type="checkbox" id="groupRuleEnabledChk" ${room.settings.groupRuleEnabled ? "checked" : ""}> <b>限制 4：</b>隨機3~10個團體不能選（含SOLO）</label>
+                    <label class="inline"><input type="checkbox" id="banEnabledChk" ${room.settings.banRuleType !== "none" ? "checked" : ""} ${dis}> <b>限制 4：禁用團體</b></label>
+                </div>
+                <div id="banModeBox" style="margin-top:6px; ${room.settings.banRuleType !== "none" ? "" : "display:none"}">
+                    <select id="banRuleTypeSel" ${dis}>
+                        <option value="fullyRandom" ${room.settings.banRuleType === "fullyRandom" ? "selected" : ""}>玩法一：隨機禁 1~10 個團體（數量也隨機）</option>
+                        <option value="hostPick" ${room.settings.banRuleType === "hostPick" ? "selected" : ""}>玩法二：房主選擇要禁用哪 1~10 個團體</option>
+                        <option value="hostRandom" ${room.settings.banRuleType === "hostRandom" ? "selected" : ""}>玩法三：房主指定數量、系統隨機禁 1~10 個團體</option>
+                        <option value="banPhase" ${room.settings.banRuleType === "banPhase" ? "selected" : ""}>玩法四：選秀前先進入禁用階段（類似LoL的ban角）</option>
+                    </select>
+                    <div class="row" id="banHostRandomBox" style="margin-top:8px; ${room.settings.banRuleType === "hostRandom" ? "" : "display:none"}">
+                        <div class="field"><label>隨機禁用幾個團體（1~10）</label>
+                            <input type="number" id="banCountInput" min="1" max="10" value="${room.settings.banCount || 3}" style="width:80px" ${dis}>
+                        </div>
+                    </div>
+                    <div id="banHostPickBox" style="margin-top:8px; ${room.settings.banRuleType === "hostPick" ? "" : "display:none"}">
+                        <p class="hint">請勾選要禁用的團體，最少1個、最多10個。</p>
+                        <div class="group-grid" id="banHostPickGrid">${Array.from(new Set(room.idolPool.flatMap(i => idolGroups(i)))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })).map(g => `<label class="inline" style="background:#2a2a3a; border-radius:8px; padding:6px 8px;"><input type="checkbox" class="banHostPickChk" value="${g}" ${(room.settings.banHostPicks || []).includes(g) ? "checked" : ""} ${dis}> ${g}</label>`).join("")}</div>
+                    </div>
+                    <div class="row" id="banPhaseTypeBox" style="margin-top:8px; ${room.settings.banRuleType === "banPhase" ? "" : "display:none"}">
+                        <div class="field"><label>禁用方式</label>
+                            <select id="banPhaseTypeSel" ${dis}>
+                                <option value="sequential" ${room.settings.banPhaseType === "sequential" ? "selected" : ""}>依第一輪選秀順位輪流禁用（看得到別人禁什麼）</option>
+                                <option value="simultaneous" ${room.settings.banPhaseType === "simultaneous" ? "selected" : ""}>所有人同時盲選禁用（看不到別人選什麼）</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="hint" style="margin-top:4px;">玩法四時，每人固定禁用 1 團；開始選秀後會先進入禁用畫面，全部人禁完才正式開始。</p>
                 </div>
 
                 <div style="margin-top:14px;">
-                    <label class="inline"><input type="checkbox" id="groupCapEnabledChk" ${room.settings.groupCapRuleType !== "none" ? "checked" : ""}> <b>限制 5：每人每團上限</b></label>
+                    <label class="inline"><input type="checkbox" id="groupCapEnabledChk" ${room.settings.groupCapRuleType !== "none" ? "checked" : ""} ${dis}> <b>限制 5：每人每團上限</b></label>
                 </div>
                 <div class="row" id="groupCapModeBox" style="margin-top:6px; ${room.settings.groupCapRuleType !== "none" ? "" : "display:none"}">
-                    <select id="groupCapRuleTypeSel">
+                    <select id="groupCapRuleTypeSel" ${dis}>
                         <option value="1" ${room.settings.groupCapRuleType === "1" ? "selected" : ""}>每人每個團體最多選1位</option>
                         <option value="2" ${room.settings.groupCapRuleType === "2" ? "selected" : ""}>每人每個團體最多選2位</option>
                     </select>
                 </div>
                 <p class="hint" style="margin-top:4px;">是每位玩家各自的上限，不是全場加總；雙團體成員計入雙方名額。</p>
 
-                <div class="row" style="margin-top:12px;"><button class="btn btn-secondary btn-sm" id="saveWheelRulesBtn">儲存限制規則設定</button></div>
+                ${isHost ? `<div class="row" style="margin-top:12px;"><button class="btn btn-secondary btn-sm" id="saveWheelRulesBtn">儲存限制規則設定</button></div>` : ""}
             </div>
 
             <h3 style="margin-top:22px;">📚 偶像資料庫（名字 / 團體 / 出生年 / 出道年 / 國籍）</h3>
             <p class="hint">出生年、出道年、國籍可自行填寫或用下方批次匯入，留空不影響一般遊戲但會影響限制1/2/3判定。國籍填「韓國」代表純韓籍。雙團體成員團體欄位填「A團/B團」，會同時出現在兩團的選秀池、且被限制4抽中任一團就整個不能選。</p>
-            ${renderIdolEditorTable()}
-            <div class="row" style="margin-top:10px;">
+            ${renderIdolEditorTable(isHost)}
+            ${isHost ? `<div class="row" style="margin-top:10px;">
                 <input type="text" id="newIdolName" placeholder="姓名" style="width:120px">
                 <input type="text" id="newIdolGroup" placeholder="團體" style="width:120px">
                 <input type="text" id="newIdolBirth" placeholder="出生年" style="width:80px">
@@ -1210,33 +1484,51 @@ function renderLobby(isHost) {
                 <summary style="cursor:pointer; color:#ccc;">批次匯入（CSV：姓名,團體,出生年,出道年,國籍,圖片網址，一行一筆，圖片網址可留空）</summary>
                 <textarea id="csvImport" rows="5" placeholder="Wonyoung,IVE,2004,2021,韓國,https://example.com/wonyoung.jpg"></textarea>
                 <div class="row"><button class="btn btn-secondary btn-sm" id="csvImportBtn">匯入 / 更新</button></div>
-            </details>
+            </details>` : ""}
 
-            <div class="row" style="margin-top:20px;">
-                <button class="btn btn-primary btn-lg" id="startGameBtn">🚀 開始選秀</button>
-            </div>
+            <h3 style="margin-top:22px;">🖼️ 團體 Logo（隨機抽團模式的卡片圖片）</h3>
+            <p class="hint">每個團體可以填一個Logo/代表圖片網址，隨機抽團模式的3張卡片會用這裡的圖片。沒填的團體會顯示「尚無圖片」。程式碼裡也可以直接寫死預設值，不用每次進來設定。</p>
+            ${renderGroupLogoEditor(isHost)}
+
+            ${isHost
+                ? `<div class="row" style="margin-top:20px;"><button class="btn btn-primary btn-lg" id="startGameBtn">🚀 開始選秀</button></div>`
+                : `<p class="hint" style="margin-top:20px;">以上設定只有房主能修改，等待房主開始選秀…</p>`}
         </div>`;
-    } else {
-        html += `<div class="panel"><p class="hint">等待房主設定並開始遊戲…（本場限制規則可在上方查看）</p></div>`;
     }
     return html;
 }
 
-function renderIdolEditorTable() {
+function renderGroupLogoEditor(isHost) {
+    const dis = isHost ? "" : "disabled";
+    const logos = room.groupLogos || {};
+    const allGroups = Array.from(new Set(room.idolPool.flatMap(i => idolGroups(i)))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+    let rows = allGroups.map(g => `
+        <tr>
+            <td>${g}</td>
+            <td><input type="text" data-logogroup="${g}" value="${(logos[g] || "").replace(/"/g, "&quot;")}" placeholder="圖片網址" ${dis}></td>
+        </tr>`).join("");
+    return `<div style="max-height:280px; overflow:auto;">
+        <table class="editor"><tr><th>團體</th><th>圖片網址</th></tr>${rows}</table>
+    </div>
+    ${isHost ? `<div class="row" style="margin-top:8px;"><button class="btn btn-secondary btn-sm" id="saveGroupLogosBtn">💾 儲存團體Logo</button></div>` : ""}`;
+}
+
+function renderIdolEditorTable(isHost) {
+    const dis = isHost ? "" : "disabled";
     let rows = room.idolPool.map((i, idx) => `
         <tr>
             <td>${i.name}</td>
             <td>${i.group}</td>
-            <td><input type="text" data-idx="${idx}" data-field="birthYear" value="${i.birthYear || ""}"></td>
-            <td><input type="text" data-idx="${idx}" data-field="debutYear" value="${i.debutYear || ""}"></td>
-            <td><input type="text" data-idx="${idx}" data-field="nationality" value="${i.nationality || ""}"></td>
-            <td><input type="text" data-idx="${idx}" data-field="imageUrl" value="${(i.imageUrl || "").replace(/"/g, "&quot;")}" placeholder="圖片網址"></td>
-            <td><button class="icon-btn" data-delidol="${idx}">刪除</button></td>
+            <td><input type="text" data-idx="${idx}" data-field="birthYear" value="${i.birthYear || ""}" ${dis}></td>
+            <td><input type="text" data-idx="${idx}" data-field="debutYear" value="${i.debutYear || ""}" ${dis}></td>
+            <td><input type="text" data-idx="${idx}" data-field="nationality" value="${i.nationality || ""}" ${dis}></td>
+            <td><input type="text" data-idx="${idx}" data-field="imageUrl" value="${(i.imageUrl || "").replace(/"/g, "&quot;")}" placeholder="圖片網址" ${dis}></td>
+            <td>${isHost ? `<button class="icon-btn" data-delidol="${idx}">刪除</button>` : ""}</td>
         </tr>`).join("");
     return `<div style="max-height:340px; overflow:auto;">
         <table class="editor"><tr><th>名字</th><th>團體</th><th>出生年</th><th>出道年</th><th>國籍</th><th>圖片網址</th><th></th></tr>${rows}</table>
     </div>
-    <div class="row" style="margin-top:8px;"><button class="btn btn-secondary btn-sm" id="saveIdolTableBtn">💾 儲存資料庫變更</button></div>`;
+    ${isHost ? `<div class="row" style="margin-top:8px;"><button class="btn btn-secondary btn-sm" id="saveIdolTableBtn">💾 儲存資料庫變更</button></div>` : ""}`;
 }
 
 function bindLobby(isHost) {
@@ -1252,6 +1544,16 @@ function bindLobby(isHost) {
     document.getElementById("shuffleBtn").onclick = shufflePlayers;
     document.getElementById("draftModeSel").onchange = e => updateSettings({ draftMode: e.target.value });
     document.getElementById("minRoundsInput").onchange = e => updateSettings({ minRounds: Math.max(1, parseInt(e.target.value) || 1) });
+    document.getElementById("pickModeSel")?.addEventListener("change", e => {
+        const patch = { pickMode: e.target.value };
+        if (e.target.value === "randomGroup") {
+            // 隨機抽團模式下，限制1/2/3強制關閉
+            patch.birthRuleType = "none";
+            patch.debutRuleType = "none";
+            patch.nonKoreanRuleType = "none";
+        }
+        updateSettings(patch);
+    });
 
     document.getElementById("birthEnabledChk")?.addEventListener("change", e => {
         document.getElementById("birthModeBox").style.display = e.target.checked ? "" : "none";
@@ -1265,19 +1567,49 @@ function bindLobby(isHost) {
     document.getElementById("groupCapEnabledChk")?.addEventListener("change", e => {
         document.getElementById("groupCapModeBox").style.display = e.target.checked ? "" : "none";
     });
+    document.getElementById("banEnabledChk")?.addEventListener("change", e => {
+        document.getElementById("banModeBox").style.display = e.target.checked ? "" : "none";
+    });
+    document.getElementById("banRuleTypeSel")?.addEventListener("change", e => {
+        document.getElementById("banHostRandomBox").style.display = e.target.value === "hostRandom" ? "" : "none";
+        document.getElementById("banHostPickBox").style.display = e.target.value === "hostPick" ? "" : "none";
+        document.getElementById("banPhaseTypeBox").style.display = e.target.value === "banPhase" ? "" : "none";
+    });
 
     document.getElementById("saveWheelRulesBtn")?.addEventListener("click", () => {
-        const birthEnabled = document.getElementById("birthEnabledChk").checked;
-        const debutEnabled = document.getElementById("debutEnabledChk").checked;
-        const nonKoreanEnabled = document.getElementById("nonKoreanEnabledChk").checked;
+        const isRandomGroupMode = room.settings.pickMode === "randomGroup";
+        const birthEnabled = !isRandomGroupMode && document.getElementById("birthEnabledChk").checked;
+        const debutEnabled = !isRandomGroupMode && document.getElementById("debutEnabledChk").checked;
+        const nonKoreanEnabled = !isRandomGroupMode && document.getElementById("nonKoreanEnabledChk").checked;
         const groupCapEnabled = document.getElementById("groupCapEnabledChk").checked;
+        const banEnabled = document.getElementById("banEnabledChk").checked;
+        const banRuleType = banEnabled ? document.getElementById("banRuleTypeSel").value : "none";
+        if (banEnabled && banRuleType === "hostPick") {
+            const picked = Array.from(document.querySelectorAll(".banHostPickChk:checked")).map(c => c.value);
+            if (picked.length < 1 || picked.length > 10) {
+                alert("玩法二（房主手動指定）請勾選 1~10 個要禁用的團體。");
+                return;
+            }
+        }
+        const banHostPicks = Array.from(document.querySelectorAll(".banHostPickChk:checked")).map(c => c.value);
         updateSettings({
             birthRuleType: birthEnabled ? document.getElementById("birthRuleTypeSel").value : "none",
             debutRuleType: debutEnabled ? document.getElementById("debutRuleTypeSel").value : "none",
             nonKoreanRuleType: nonKoreanEnabled ? document.getElementById("nonKoreanRuleTypeSel").value : "none",
-            groupRuleEnabled: document.getElementById("groupRuleEnabledChk").checked,
-            groupCapRuleType: groupCapEnabled ? document.getElementById("groupCapRuleTypeSel").value : "none"
+            groupCapRuleType: groupCapEnabled ? document.getElementById("groupCapRuleTypeSel").value : "none",
+            banRuleType,
+            banCount: Math.max(1, Math.min(10, parseInt(document.getElementById("banCountInput").value) || 3)),
+            banHostPicks,
+            banPhaseType: document.getElementById("banPhaseTypeSel").value
         });
+    });
+
+    document.getElementById("saveGroupLogosBtn")?.addEventListener("click", () => {
+        const logos = { ...(room.groupLogos || {}) };
+        document.querySelectorAll("[data-logogroup]").forEach(inp => {
+            logos[inp.dataset.logogroup] = inp.value.trim();
+        });
+        saveGroupLogos(logos);
     });
 
     document.getElementById("saveIdolTableBtn").onclick = () => {
@@ -1337,6 +1669,54 @@ function bindLobby(isHost) {
     document.getElementById("startGameBtn").onclick = startGame;
 }
 
+function renderBanPhase(isHost) {
+    const bp = room.banPhase;
+    if (!bp) return `<div class="panel"><p class="hint">準備中…</p></div>`;
+    const allGroups = Array.from(new Set(room.idolPool.flatMap(i => idolGroups(i)))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+    const bannedSoFar = Object.values(bp.bans);
+    const myBan = bp.bans[clientId];
+
+    let html = `<div class="row" style="justify-content:center;">
+        <button class="btn btn-danger btn-sm" id="leaveBtn">🚪 退出選秀（回到準備房間）</button>
+    </div>
+    <div class="panel">
+        <h2>🚫 禁用團體階段</h2>`;
+
+    if (bp.type === "sequential") {
+        const curBanPlayerId = getBanCurrentPlayerId(bp);
+        const curBanPlayer = room.players.find(p => p.id === curBanPlayerId);
+        html += `<p class="hint">依照選秀順位輪流禁用，每人禁1團，禁的過程大家都看得到。</p>`;
+        html += `<h3><span class="turn-highlight">${curBanPlayer ? curBanPlayer.name + " 禁用中..." : "禁用完成"}</span></h3>`;
+        html += `<div style="margin:10px 0;"><b>已禁用：</b>${bannedSoFar.length ? bannedSoFar.join("、") : "（尚無）"}</div>`;
+    } else {
+        html += `<p class="hint">所有人同時各自選1團禁用，選的時候看不到別人選了什麼，全部人選完才會一起公開。</p>`;
+        html += `<div style="margin:10px 0;"><b>目前已有 ${bannedSoFar.length} / ${room.players.length} 人完成選擇</b></div>`;
+        html += myBan ? `<div class="pending">你已選擇禁用：${myBan}，等待其他人…</div>` : "";
+    }
+
+    const canAct = !myBan && (bp.type === "simultaneous" || getBanCurrentPlayerId(bp) === clientId);
+    // 盲選模式：畫面上不能因為「已經有人禁了」而顯示灰階/已禁用樣式，否則會洩漏別人選了什麼
+    const visibleBanned = bp.type === "sequential" ? bannedSoFar : [];
+    html += `<div class="group-grid" style="margin-top:14px;">`;
+    allGroups.forEach(g => {
+        const disabled = !canAct || visibleBanned.includes(g);
+        html += `<button class="group-btn ${visibleBanned.includes(g) ? "taken" : ""}" data-banselect="${g}" ${disabled ? "disabled" : ""}>
+            <span class="gb-name">${g}</span>
+        </button>`;
+    });
+    html += `</div></div>`;
+    return html;
+}
+
+function bindBanPhase() {
+    document.getElementById("leaveBtn")?.addEventListener("click", leaveRoom);
+    document.querySelectorAll("[data-banselect]").forEach(b => b.addEventListener("click", () => {
+        if (b.disabled) return;
+        if (!confirm(`確定要禁用「${b.dataset.banselect}」嗎？這個動作不能反悔。`)) return;
+        submitBan(b.dataset.banselect);
+    }));
+}
+
 function renderGame(isHost) {
     const finished = room.status === "finished";
     return `
@@ -1364,7 +1744,7 @@ function renderRulesBanner() {
         if (rr.bannedDebutYears.length) items.push(`🚫 出道年 <b>${rr.bannedDebutYears.join("、")}</b> 不能選`);
         else items.push(`🚫 出道年限制已開啟，但資料庫無資料`);
     }
-    if (s.groupRuleEnabled) {
+    if (s.banRuleType !== "none") {
         if (rr.bannedGroups.length) {
             const hasSolo = rr.bannedGroups.includes("SOLO");
             items.push(`🚫 團體 <b>${rr.bannedGroups.join("、")}</b> 不能選${hasSolo ? "（含SOLO）" : ""}`);
@@ -1404,7 +1784,71 @@ function fitTextFontSize(text, maxSize, minSize, charsAtMax) {
     return Math.max(minSize, Math.min(maxSize, size));
 }
 
+function renderMemberGridHtml(members, myTurn) {
+    let html = `<div class="member-grid">`;
+    members.forEach(idol => {
+        const taken = isIdolTaken(idol);
+        const restricted = !taken && (isRestrictedByRules(idol) || isBlockedForPlayer(idol, clientId) || isGroupCapReached(idol, clientId));
+        const disabled = taken || restricted || !myTurn;
+        const cls = taken ? "taken" : (restricted ? "restricted" : "");
+        const memberFontSize = fitTextFontSize(idol.name, 13, 9, 8);
+        html += `<button class="idol-btn ${cls}" style="font-size:${memberFontSize}px;" ${idolHoverAttrs(idol)} data-pick="${idol.name}|${idol.group}" ${disabled ? "disabled" : ""}>${idol.name}</button>`;
+    });
+    html += `</div>`;
+    return html;
+}
+
+function renderGroupDrawUI() {
+    let html = "<h2 style=\"font-size:18px;\">🎤 偶像選秀池（隨機抽團模式）</h2>";
+    const curId = getCurrentPlayerId(room.draftBoard);
+    const myTurn = curId === clientId && room.status === "playing" && !localPendingPick && !isRevealActive();
+    const cur = room.players.find(p => p.id === curId);
+
+    if (!myTurn) {
+        html += `<div class="hint" style="padding:20px 0; text-align:center;">${cur ? `等待 ${cur.name} 抽團中…` : "等待中…"}</div>`;
+        return html;
+    }
+
+    if (localChosenGroupForDraw) {
+        const members = room.idolPool.filter(i => idolGroups(i).includes(localChosenGroupForDraw));
+        html += `<div class="row" style="justify-content:space-between; align-items:center;">
+            <div><b>已選擇團體：</b><span class="turn-highlight" style="font-size:1.05em;">${localChosenGroupForDraw}</span></div>
+        </div>`;
+        html += `<p class="hint">請從下方點選要指名的成員。</p>`;
+        html += renderMemberGridHtml(members, myTurn);
+        return html;
+    }
+
+    const draw = room.currentGroupDraw;
+    if (!draw || draw.forPlayerId !== clientId) {
+        html += `<div class="hint" style="padding:20px 0; text-align:center;">正在抽選團體…</div>`;
+        generateGroupDraw();
+        return html;
+    }
+
+    const me = room.players.find(p => p.id === clientId);
+    const rerollsLeft = me ? (me.rerollsLeft ?? 0) : 0;
+    html += `<p class="hint">從下面 3 個團體中選 1 個，再從該團挑選要指名的成員。</p>`;
+    html += `<div class="group-draw-grid">`;
+    draw.groups.forEach((g, idx) => {
+        const logo = (room.groupLogos && room.groupLogos[g]) || "";
+        const logoHtml = logo
+            ? `<img class="gdc-img" src="${logo}" alt="${g}" onerror="this.outerHTML='<div class=&quot;gdc-noimg&quot;>尚無圖片</div>'">`
+            : `<div class="gdc-noimg">尚無圖片</div>`;
+        html += `<div class="group-draw-card">
+            ${logoHtml}
+            <div class="gdc-name">${g}</div>
+            <button class="btn btn-primary btn-sm" data-drawchoose="${idx}">選這團</button>
+            <button class="icon-btn" data-drawreroll="${idx}" ${rerollsLeft > 0 ? "" : "disabled"}>🔄 重抽這張</button>
+        </div>`;
+    });
+    html += `</div>`;
+    html += `<div class="hint" style="text-align:center; margin-top:10px;">剩餘重抽次數：<b style="color:var(--primary);">${rerollsLeft}</b> / 3</div>`;
+    return html;
+}
+
 function renderIdolPoolHtml() {
+    if (room.settings.pickMode === "randomGroup") return renderGroupDrawUI();
     let html = "<h2 style=\"font-size:18px;\">🎤 偶像選秀池</h2>";
     html += `<div class="row" style="margin-bottom:8px;">
         <input type="text" id="idolSearchInput" placeholder="搜尋 名字(團名)" value="${idolSearchQuery.replace(/"/g, "&quot;")}" style="flex:1; min-width:180px; font-size:13px; padding:7px 10px;">
@@ -1444,17 +1888,7 @@ function renderIdolPoolHtml() {
     groupKeys.forEach(g => {
         const isExpanded = forceExpand || expandedGroup === g;
         if (!isExpanded) return;
-        const members = groups[g];
-        html += `<div class="member-grid">`;
-        members.forEach(idol => {
-            const taken = isIdolTaken(idol);
-            const restricted = !taken && (isRestrictedByRules(idol) || isBlockedForPlayer(idol, clientId) || isGroupCapReached(idol, clientId));
-            const disabled = taken || restricted || !myTurn;
-            const cls = taken ? "taken" : (restricted ? "restricted" : "");
-            const memberFontSize = fitTextFontSize(idol.name, 13, 9, 8);
-            html += `<button class="idol-btn ${cls}" style="font-size:${memberFontSize}px;" ${idolHoverAttrs(idol)} data-pick="${idol.name}|${idol.group}" ${disabled ? "disabled" : ""}>${idol.name}</button>`;
-        });
-        html += `</div>`;
+        html += renderMemberGridHtml(groups[g], myTurn);
     });
     return html;
 }
@@ -1591,6 +2025,13 @@ function bindGame(isHost) {
         const g = b.dataset.togglegroup;
         if (expandedGroup === g) expandedGroup = null; else expandedGroup = g;
         render();
+    });
+    document.querySelectorAll("[data-drawchoose]").forEach(b => b.onclick = () => {
+        const idx = parseInt(b.dataset.drawchoose);
+        if (room.currentGroupDraw && room.currentGroupDraw.groups[idx]) chooseGroupFromDraw(room.currentGroupDraw.groups[idx]);
+    });
+    document.querySelectorAll("[data-drawreroll]").forEach(b => b.onclick = () => {
+        rerollGroupCard(parseInt(b.dataset.drawreroll));
     });
     document.getElementById("confirmPickBtn")?.addEventListener("click", confirmPick);
     document.getElementById("cancelPickBtn")?.addEventListener("click", cancelPick);
@@ -1803,7 +2244,7 @@ async function downloadDraftResults(btn) {
 // ==================== 退出房間 ====================
 function goHome() {
     if (unsub) { unsub(); unsub = null; }
-    room = null; roomCode = null; localPendingPick = null; idolSearchQuery = ""; idolSearchFocused = false; expandedGroup = null;
+    room = null; roomCode = null; localPendingPick = null; idolSearchQuery = ""; idolSearchFocused = false; expandedGroup = null; localChosenGroupForDraw = null; groupDrawRequestInFlight = false;
     const url = new URL(location.href); url.searchParams.delete("room");
     history.replaceState(null, "", url.toString());
     render();
@@ -1830,6 +2271,8 @@ async function leaveRoom() {
                 finishedPlayerIds: [],
                 resolvedRules: null,
                 lastReveal: null,
+                banPhase: null,
+                currentGroupDraw: null,
                 lastActivity: Date.now()
             });
         });
